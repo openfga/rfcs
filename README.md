@@ -4,6 +4,24 @@ Want to suggest a change to the OpenFGA project? That's great!
 
 We follow an RFC (Request for Comments) process for substantial changes to the project.
 
+## When the RFC process is necessary
+
+The RFC process is necessary for changes which have a substantial impact on end users, operators, or contributors. "Substantial" is subjective, but it generally includes:
+
+* Changes to core workflow functionality (models, tuples, new concepts).
+* Changes to how OpenFGA is packaged, distributed, or configured.
+* Changes with significant architectural implications.
+* Changes which modify or introduce officially supported interfaces (HTTP APIs, external integrations, etc).
+
+An RFC is not necessary for changes which have narrow scope and don't leave much to be discussed:
+
+* Bug fixes and optimizations with no semantic change.
+* Small features which only impact a narrow use case and affect users in an obvious way.
+
+The RFC process aims to prevent wasted time and effort on substantial changes that end up being sent back to the drawing board. If your change takes minimal effort, or if you don't mind potentially scrapping it and starting over, feel free to skip this process. Do note however that pull requests may be closed with a polite request to submit an RFC.
+
+If you're not sure whether to open an RFC for a change you'd like to propose, feel free to ask in our Discord's [#dev channel](#discord-link)!
+
 ## RFC Process
 
 ### Proposal
