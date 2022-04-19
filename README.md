@@ -31,7 +31,12 @@ Once a pull request is opened, the RFC is now in development and the following w
 When a pull request enters FCP the following will happen:
 1. A core team member will apply the "Final Comment Period" label.
 1. The FCP will last 7 days. If there's unanimous agreement among the team the FCP can close early.
-1. For voting, the binding votes are comprised of the core team (and subteam maintainers if labeled as a subteam RFC). Acceptance requires super majority of binding votes in favor. The voting options are the following: Affirmative, Negative, and Abstinence. Non-binding votes are of course welcome. Super majority means 2/3 or greater and no single company can have more than 50% of countable votes.
+1. For voting, the binding votes are comprised of the core team (and subteam maintainers if labeled as a subteam RFC). Acceptance requires super majority of binding votes in favor. The voting options are the following: 
+    * Affirmative,
+    * Negative, and 
+    * Abstain. 
+    
+    Non-binding votes are of course welcome. Super majority means 2/3 or greater and no single company can have more than 50% of countable votes.
 1. If no substantial new arguments or ideas are raised, the FCP will follow the outcome decided. If there are substantial new arguments, then the RFC will go back into development.
 
 ### Merge
