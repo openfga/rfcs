@@ -28,9 +28,10 @@ If you're not sure whether to open an RFC for a change you'd like to propose, fe
 To get a proposal into OpenFGA, an RFC first needs to be merged into the RFC repo. Once an RFC is merged, it's considered 'active' and may be implemented to be included in the project. These steps will get an RFC to be considered:
 
 1. Fork the RFC repo: <https://github.com/openfga/rfcs>
-1. Copy `proposal-template.md` to `0000-my-feature/proposal.md` (where 'my-feature' is descriptive). Don't assign an RFC number yet.
-1. Fill in RFC template. 
+1. Copy `proposal-template.md` to `YYYYMMDD-my-feature.md` (where 'YYYY' is the year, 'MM' is the numerical month, 'DD' is the numerical date, and 'my-feature' is descriptive).
+1. Fill in the RFC template. 
     1. Any section can be marked as "N/A" if not applicable.
+    1. Feel free to leave 'Relevant' sections blank until issues or PRs have been created.
     1. Consult the OpenFGA [design principles](https://github.com/openfga/rfcs/blob/main/DESIGN_PRINCIPLES.md) to guide your design.
 1. Submit a pull request. The pull request is the time to get review of the proposal from the core team and larger community.
     1. Keep the description light; your proposal should contain all relevant information. Feel free to link to any relevant GitHub issues, since that helps with networking.
@@ -71,3 +72,4 @@ Once an `issues-created/<sub-team>` label has been created for each sub-team, th
 1. Update issues with RFC ID and a link to the text file.
 1. Update any links in PR description to point at the committed file.
 1. Remove the "Final Comment Period" label.
+
