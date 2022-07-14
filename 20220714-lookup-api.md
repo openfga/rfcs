@@ -6,7 +6,8 @@
 - **Status**: Draft <!-- Acceptable values: Draft, Approved, On Hold, Superseded -->
 - **RFC Pull Request**: (leave blank)
 - **Relevant Issues**:
-  - blah
+  - https://github.com/openfga/openfga/issues/101
+  - https://github.com/openfga/api/issues/10
 - **Supersedes**: N/A
 
 # Summary
@@ -309,7 +310,6 @@ The stricter variant of Lookup that requires a single relationship protects the 
 
 # Prior Art
 [prior-art]: #prior-art
-
 
 ## Other Zanzibar-inspired Implementations
 * [Oso](https://www.osohq.com/) has a [`List` endpoint](https://cloud-docs.osohq.com/reference/client-apis/api-explorer#/default/post_list)
