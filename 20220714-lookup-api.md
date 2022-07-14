@@ -310,7 +310,13 @@ The stricter variant of Lookup that requires a single relationship protects the 
 # Prior Art
 [prior-art]: #prior-art
 
-Discuss prior art, both the good and bad.
+
+## Other Zanzibar-inspired Implementations
+* [Oso](https://www.osohq.com/) has a [`List` endpoint](https://cloud-docs.osohq.com/reference/client-apis/api-explorer#/default/post_list)
+  The Oso List API requires `actor_type`, `actor_id`, `action`, and `resource_type` as inputs. So they limit the query to resources for a specific actor and action, which is similar to the primary proposal herein.
+
+* [authzed/spicedb](https://github.com/authzed/spicedb) has a [`LookupResources` endpoint](https://app.swaggerhub.com/apis-docs/authzed/authzed/1.0#/PermissionsService/PermissionsService_LookupResources)
+  The authzed/spicedb LookupResources API requires the `resourceObjectType`, `permission`, and `subject` (subject can be a userset such as 'group:group1#member'), so that is also similar to the primary proposal herein.
 
 # Unresolved Questions
 [unresolved-questions]: #unresolved-questions
