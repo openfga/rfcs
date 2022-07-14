@@ -5,8 +5,8 @@
 - Author(s): (Github usernames)
 - Status: Draft <!-- Acceptable values: Draft, Approved, On Hold, Superseded -->
 - RFC Pull Request: (leave blank)
-- OpenFGA Pull Request: (leave blank)
-- OpenFGA Issue: (leave blank)
+- Relevant Issues:
+  <!-- List relevant Github issues here -->
 - Supersedes: (put "N/A" unless this replaces an existing RFC, then link to that RFC)
 
 # Summary
