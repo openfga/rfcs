@@ -447,6 +447,11 @@ The paginated approach described above also doesn't seem to provide much value g
 # Unresolved Questions
 [unresolved-questions]: #unresolved-questions
 
-- What parts of the design do you expect to be resolved before this gets merged?
-- What parts of the design do you expect to be resolved through implementation of the feature?
-- What related issues do you consider out of scope for this RFC that could be addressed in the future independently of the solution that comes out of this RFC?
+- **What parts of the design do you expect to be resolved before this gets merged?**
+  The design (not necessarily the implementation) of the changes to the API surface.
+
+- **What parts of the design do you expect to be resolved through implementation of the feature?**
+  The finer details of the changes needed for the `OpenFGADatastore` storage interface.
+
+- **What related issues do you consider out of scope for this RFC that could be addressed in the future independently of the solution that comes out of this RFC?**
+  None at this time.
