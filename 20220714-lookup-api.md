@@ -126,11 +126,20 @@ Sample grpcurl command:
 ```
 grpcurl -plaintext \
   -d '{
-           "store_id":"<store>", 
-           "authorization_model_id":"<modelID>",
-           "object_type":"document", 
-           "relation":"viewer", 
-           "user":"bob"
+        "store_id":"<store>",
+        "authorization_model_id":"<modelID>",
+        "object_type":"document",
+        "relation":"viewer",
+        "user":"bob",
+        "contextual_tuples": {
+          "tuple_keys': [
+            {
+              "object": "document:doc4",
+              "relation": "viewer",
+              "user": "bob"
+            }
+          ]
+        }
       }' \
   localhost:8081 openfga.v1.OpenFGAService/Lookup
 
@@ -138,7 +147,8 @@ grpcurl -plaintext \
     "object_ids": [
         "doc1",
         "doc2",
-        "doc3"
+        "doc3",
+        "doc4
     ]
 }
 ```
@@ -148,17 +158,27 @@ Sample curl command:
 curl --request POST 'http://localhost:8080/stores/<storeID>/lookup' \
 --header 'Content-Type: application/json' \
 --data-raw '{
+    "authorization_model_id": "<modelID>"
     "object_type": "document",
     "relation": "viewer",
     "user": "bob",
-    "authorization_model_id": "<modelID>"
+    "contextual_tuples": {
+      "tuple_keys': [
+        {
+          "object": "document:doc4",
+          "relation": "viewer",
+          "user": "bob"
+        }
+      ]
+    }
 }'
 
 {
     "object_ids": [
         "doc1",
         "doc2",
-        "doc3"
+        "doc3",
+        "doc4"
     ]
 }
 ```
@@ -217,6 +237,10 @@ index 4140d56..d0056cb 100644
 +
 +    string relation = 4;
 +    string user = 5;
++
++    openfga.v1.ContextualTupleKeys contextual_tuples = 6 [
++      json_name = "contextual_tuples"
++    ];
 +}
 +
 +message LookupResponse {
