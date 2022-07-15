@@ -285,7 +285,6 @@ func (s *Server) Lookup(
 Sample code implementing these proposed changes can be found here:
 https://github.com/openfga/openfga/tree/lookup-poc (server changes) which depends on https://github.com/openfga/api/tree/lookup-api (protobuf API changes)
 
-
 ### Storage Interface Changes
 The [`OpenFGADatastore`](https://github.com/openfga/openfga/blob/170a6834d057428e3b0d250cae47a01f5a61898f/storage/storage.go#L132) interface will need to be expanded or modified to support queries for all objects of a particular object type (within a store). Today our datastore/storage interface only has the [`Read`](https://github.com/openfga/openfga/blob/170a6834d057428e3b0d250cae47a01f5a61898f/storage/storage.go#L51) method, but it requires a storeID and tuple key specifying either the `object` or `user` field (or both). The Lookup work will need a method that supports only providing the storeID and object `type`.
 
@@ -331,6 +330,7 @@ Potential arguments for not introducing the Lookup API include:
 # Alternatives
 [alternatives]: #alternatives
 
+## More Generic Lookup API
 An alternative version of Lookup could support both generic and specific queries such as:
 > list all documents that user:bob can 'read' or 'write'
 
@@ -363,6 +363,72 @@ curl --request POST 'http://localhost:8080/stores/<storeID>/lookup' \
 This alternative Lookup API definition is more generic and could be more generally applicable to specific cases where you want to know all of the objects (of a specific type) and the relationships to those objects a user has. However, the query cost of supporing a generic API endpoint like this could be quite expensive since you may have to evaluate all object and relation pairs for objects of a given type.
 
 The stricter variant of Lookup that requires a single relationship protects the server a little more while giving control to the adopter to choose to how rate limit and throttle invocations of the Lookup endpoint. For these reasons it is recommended that Lookup will only serve queries such as those constrained to a specific object type, single relation, and single user.
+
+## Paginated Lookup API
+Lookup could be implemented as a paginated list instead of the streaming and/or static list approach proposed. For example, following along with the prior example,
+
+```
+curl --request POST 'http://localhost:8080/stores/<storeID>/lookup' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "authorization_model_id": "<modelID>"
+    "object_type": "document",
+    "relation": "viewer",
+    "user": "bob",
+    "contextual_tuples": {
+      "tuple_keys': [
+        {
+          "object": "document:doc4",
+          "relation": "viewer",
+          "user": "bob"
+        }
+      ]
+    },
+    "page_size": 2
+}'
+
+{
+    "object_ids": [
+        "doc1",
+        "doc2"
+    ],
+    "continuation_token": "YmxhaAo="
+}
+
+curl --request POST 'http://localhost:8080/stores/<storeID>/lookup' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "authorization_model_id": "<modelID>"
+    "object_type": "document",
+    "relation": "viewer",
+    "user": "bob",
+    "contextual_tuples": {
+      "tuple_keys': [
+        {
+          "object": "document:doc4",
+          "relation": "viewer",
+          "user": "bob"
+        }
+      ]
+    },
+    "page_size": 2,
+    "continuation_token": "YmxhaAo="
+}'
+
+{
+    "object_ids": [
+        "doc3",
+        "doc4"
+    ],
+    "continuation_token": ""
+}
+```
+
+The advantage of this approach is that we already have a handful of paginated APIs in the OpenFGA API, but the challenge with this is supporting pagination with graph traversal.
+
+The existing APIs we have that support pagination require no graph traversal to resolve the request, and are easily paginated with a database filter and sort approach. Paginating Lookup, like Expand, is challenging because we'd have to somehow encode the path of the graph that we had already visited and continue paginating from the subpath in the graph of relationships where the last request left off. To do this we'd have to change the way we traverse the graph as well, because we'd have to traverse the graph in a deterministic (and ordered) way, which would also limit the ability to concurrently evaluate subpaths of the graph in parallel, thus significantly hurting performance. This issue may be something we discover an appropriate solution for in the future, but at this time it is not obvious how to best solve that problem with performance in mind, and an implementation of such a pattern would be challenging at this time. The complexity of such an implementation would likely hold us back from getting some quicker feedback on the usability of Lookup in general. If the community has any recommandations/ideas on how to approach this problem we'd love to hear it!
+
+The paginated approach described above also doesn't seem to provide much value given the semantics and limitations of the Lookup API as described earlier. Because Lookup is designed for Search with Permissions on small object collections, the intended usage of the API is to never exceed a couple of thousand results in the response, and thus implementing pagination ontop of it seems like overkill. What do you think?
 
 # Prior Art
 [prior-art]: #prior-art
