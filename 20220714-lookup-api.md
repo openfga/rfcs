@@ -21,7 +21,7 @@ More specifically, given an object type, relation, and user, list all of the obj
 
 Depending on the use case, this problem can be solved with the existing Check API, as described in our [Search with Permissions](https://openfga.dev/docs/interacting/search-with-permissions) documentation, but in some cases it is more practical to have a dedicated API to serve this functionality.
 
-The Lookup API addresses [Search with Permissions (Option 3)](https://openfga.dev/docs/interacting/search-with-permissions#option-3-build-a-list-of-ids-then-search) documentation. It is specifically targeting the Search with Permissions use case for small object collections (on the order of thousands). For Search with Permissions on larger collections (tens of thousands and beyond) an OpenFGA client should build an external index via the ReadChanges (e.g. Watch) API or, in the future, via the OpenFGA Indexer.
+The Lookup API addresses [Search with Permissions (Option 3)](https://openfga.dev/docs/interacting/search-with-permissions#option-3-build-a-list-of-ids-then-search). It is specifically targeting the Search with Permissions use case for small object collections (on the order of thousands). For Search with Permissions on larger collections (tens of thousands and beyond) an OpenFGA client should build an external index via the ReadChanges (e.g. Watch) API or, in the future, via the OpenFGA Indexer.
 
 # Definitions
 [definitions]: #definitions
