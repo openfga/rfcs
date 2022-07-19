@@ -21,7 +21,7 @@ More specifically, given an object type, relation, and user, list all of the obj
 
 Depending on the use case, this problem can be solved with the existing Check API, as described in our [Search with Permissions](https://openfga.dev/docs/interacting/search-with-permissions) documentation, but in some cases it is more practical to have a dedicated API to serve this functionality.
 
-The Lookup API addresses [Option 3 in the Search with Permissions](https://openfga.dev/docs/interacting/search-with-permissions#option-3-build-a-list-of-ids-then-search) documentation. It is specifically targeting the Search with Permissions use case for small object collections (on the order of thousands). For Search with Permissions on larger collections (tens of thousands and beyond) an OpenFGA client should build an external index via the ReadChanges (e.g. Watch) API or, in the future, via the OpenFGA Indexer.
+The Lookup API addresses [Search with Permissions (Option 3)](https://openfga.dev/docs/interacting/search-with-permissions#option-3-build-a-list-of-ids-then-search) documentation. It is specifically targeting the Search with Permissions use case for small object collections (on the order of thousands). For Search with Permissions on larger collections (tens of thousands and beyond) an OpenFGA client should build an external index via the ReadChanges (e.g. Watch) API or, in the future, via the OpenFGA Indexer.
 
 # Definitions
 [definitions]: #definitions
@@ -48,7 +48,7 @@ For more information/background on commonly used terms, please see the official 
 # What it is
 [what-it-is]: #what-it-is
 
-The Lookup API will provide clients with the ability to query the object ids that a user has a particular relationship with. The list of object ids the Lookup API returns can then be used by a client to filter an object collection to only the objects that a user has a particular relationship with by taking the intersection of it with any client provided filters/ordering of the underlying dataset. This is described in more detail with [Option 3 of the Search with Permission](https://openfga.dev/docs/interacting/search-with-permissions#option-3-build-a-list-of-ids-then-search) document.
+The Lookup API will provide clients with the ability to query the object ids that a user has a particular relationship with. The list of object ids the Lookup API returns can then be used by a client to filter an object collection to only the objects that a user has a particular relationship with by taking the intersection of it with any client provided filters/ordering of the underlying dataset. This is described in more detail with [Search with Permission (Option 3)](https://openfga.dev/docs/interacting/search-with-permissions#option-3-build-a-list-of-ids-then-search) document.
 
 It will be provided as two different API endpoints: one will provide a streaming endpoint and the other will implement the endpoint without streaming. These two different endpoints could be used interchangably, but clients can choose which one may be better for their integration environment.
 
