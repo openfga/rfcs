@@ -184,7 +184,7 @@ curl --request POST 'http://localhost:8080/stores/<storeID>/lookup' \
 }
 ```
 
-The results from the Lookup query can then be used to filter a collection by taking the intersection of these object ids with objects returned from your application's query.
+The results from the Lookup query can then be used to filter a collection by taking the intersection of these object ids with objects returned from the clients own query.
 
 # How it Works
 [how-it-works]: #how-it-works
