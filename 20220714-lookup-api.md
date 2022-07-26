@@ -65,12 +65,13 @@ type document
         define parent as self
 ```
 and the following relationship tuples:
-```
-document:doc1, viewer, bob
-document:doc2, editor, bob
-document:doc3, parent, folder:folder1
-folder:folder1, viewer, bob
-```
+
+| object         | relation | user           |
+|----------------|----------|----------------|
+| document:doc1  | viewer   | bob            |
+| document:doc2  | editor   | bob            |
+| document:doc3  | parent   | folder:folder1 |
+| folder:folder1 | viewer   | bob            |
 
 ## StreamedLookup
 StreamedLookup will implement a grpc [server streaming RPC](https://grpc.io/docs/what-is-grpc/core-concepts/#server-streaming-rpc) endpoint.
@@ -249,7 +250,7 @@ index 4140d56..d0056cb 100644
 +
 +message StreamedLookupResponse {
 +  string object_id = 1;
- }
++}
 ```
 
 `store_id`, `object_type`, `relation`, and `user` will be required fields. If the `authorization_model_id` is not provided it will default to the latest model.
