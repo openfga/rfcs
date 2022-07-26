@@ -251,6 +251,9 @@ index 4140d56..d0056cb 100644
 +  string object_id = 1;
  }
 ```
+
+`store_id`, `object_type`, `relation`, and `user` will be required fields. If the `authorization_model_id` is not provided it will default to the latest model.
+
 The streaming variant accepts the same request body but differs in its response structure. For the streaming RPC a single `StreamedLookupResponse` is streamed back per result, whereas with the unary variant an array of object ids is accumulated and then returned.
 
 The `/stores/{store_id}/lookup:streamed` HTTP path mapping for the streaming variant was inspired by [Google's HTTP mapping for Custom Methods](https://cloud.google.com/apis/design/custom_methods), but this is open for debate.
