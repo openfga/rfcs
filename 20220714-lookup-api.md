@@ -330,6 +330,7 @@ No migrations or breaking changes are necessary to support the Lookup API endpoi
 Potential arguments for not introducing the Lookup API include:
 * Without proper limitations clients could impact the whole system by issuing Lookups on large collections.
 * Increases the OpenFGA API surface for a very niche use case for Search with Permissions on small object collections.
+* Potentially encourages users to use Lookup over other methods that may be better applied for their use-case (search then check or local index).
 
 # Alternatives
 [alternatives]: #alternatives
