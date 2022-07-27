@@ -292,17 +292,17 @@ https://github.com/openfga/openfga/tree/lookup-poc (server changes) which depend
 ### Storage Interface Changes
 The [`OpenFGADatastore`](https://github.com/openfga/openfga/blob/170a6834d057428e3b0d250cae47a01f5a61898f/storage/storage.go#L132) interface will need to be expanded or modified to support queries for all objects of a particular object type (within a store). Today our datastore/storage interface only has the [`Read`](https://github.com/openfga/openfga/blob/170a6834d057428e3b0d250cae47a01f5a61898f/storage/storage.go#L51) method, but it requires a storeID and tuple key specifying either the `object` or `user` field (or both). The Lookup work will need a method that supports only providing the storeID and object `type`.
 
-We should modify the [`TupleBackend`](https://github.com/openfga/openfga/blob/170a6834d057428e3b0d250cae47a01f5a61898f/storage/storage.go#L47) interface with a new method `QueryRelationshipTuples` and it's signature could look like:
+The [`TupleBackend`](https://github.com/openfga/openfga/blob/170a6834d057428e3b0d250cae47a01f5a61898f/storage/storage.go#L47) interface will need a new method and it's signature could look like:
 
 ```
-QueryRelationships(
+QueryRelationshipTuples(
   ctx context.Context,
   storeID string,
-  filter *RelationshipFilter,
-  opts ...QueryOptionsOption,
+  filter *QueryRelationshipTuplesFilter,
+  opts ...QueryOption,
 ) (TupleIterator, error)
 
-type RelationshipFilter struct {
+type QueryRelationshipTuplesFilter struct {
   ObjectType         string
   OptionalObjectID   string
   OptionalRelation   string
@@ -311,10 +311,9 @@ type RelationshipFilter struct {
 
 type QueryOptions struct {
   Limit    *uint64
-  Usersets []string
 }
 
-type QueryOptionsOption func(*QueryOptions)
+type QueryOption func(*QueryOptions)
 ```
 
 This approach will allow us to query relationship tuples using any provided filters, and could serve as a more general replacement for the existing Read method.
