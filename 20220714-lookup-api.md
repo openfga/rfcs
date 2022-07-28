@@ -295,22 +295,22 @@ The [`OpenFGADatastore`](https://github.com/openfga/openfga/blob/170a6834d057428
 The [`TupleBackend`](https://github.com/openfga/openfga/blob/170a6834d057428e3b0d250cae47a01f5a61898f/storage/storage.go#L47) interface will need a new method and it's signature could look like:
 
 ```
-QueryRelationshipTuples(
+ReadRelationshipTuples(
   ctx context.Context,
-  storeID string,
-  filter *QueryRelationshipTuplesFilter,
+  filter ReadRelationshipTuplesFilter,
   opts ...QueryOption,
 ) (TupleIterator, error)
 
-type QueryRelationshipTuplesFilter struct {
-  ObjectType         string
+type ReadRelationshipTuplesFilter struct {
+  StoreID            string
+  OptionalObjectType string
   OptionalObjectID   string
   OptionalRelation   string
   OptionalUserFilter string
 }
 
 type QueryOptions struct {
-  Limit    *uint64
+  Limit    uint64
 }
 
 type QueryOption func(*QueryOptions)
