@@ -121,7 +121,7 @@ curl --request POST 'http://localhost:8080/stores/<storeID>/lookup:streamed' \
 Lookup will implement a grpc [unary RPC](https://grpc.io/docs/what-is-grpc/core-concepts/#unary-rpc) endpoint.
 
 The endpoint will return a list of the object ids the target user has the given relationship with. The size of the list that is returned will be determined by the `lookup-max-results` config (see [Configuration Changes](#configuration-changes)). If no maximum is provided by that config, then Lookup will attempt to accumulate all of the object ids before returning them. 
-> ⚠️ without proper configuration of or use of the Lookup endpoint the server memory (and client memory) footprint could be profoundly impacted, because the list is accumulated in memory before it is returned.
+> ⚠️ Without proper configuration of, and use of the Lookup endpoint, the server's memory footprint could be profoundly impacted, because the list is accumulated in memory before it is returned.
 
 Sample grpcurl command:
 ```
