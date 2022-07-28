@@ -191,7 +191,7 @@ The results from the Lookup query can then be used to filter a collection by tak
 
 The `StreamedLookup` endpoint will be (gRPC server stream) will be mapped to it's HTTP/json equivalent through the mapping provided by the implementation of the grpc-gateway project, which converts the stream into an [http/1.1 chunked transfer encoding](https://en.wikipedia.org/wiki/Chunked_transfer_encoding). Consumers of the streaming HTTP endpoint will be able to consume it using chunked-transfer encoding.
 
-The `Lookup` endpoint (unary gRPC endpoint) will be mapped to it's HTTP/json equivalent through the mapping provided by the implementation of the [grpc-gateway](https://grpc-ecosystem.github.io/grpc-gateway/) project.
+The `Lookup` endpoint (unary gRPC endpoint) will be mapped to its HTTP/json equivalent through the mapping provided by the implementation of the [grpc-gateway](https://grpc-ecosystem.github.io/grpc-gateway/) project.
 
 ## API Changes
 The following is the proposed patch diff of the protobuf API changes to [openfga/api](https://github.com/openfga/api):
