@@ -37,7 +37,7 @@ For more information/background on commonly used terms, please see the official 
 [motivation]: #motivation
 
 - **Why should we do this?**
-  It simplifies client integrations with OpenFGA for Search with Permissions and it adddress an ask from the community for an endpoint to list the objects a user has permissions for.
+  It simplifies client integrations with OpenFGA for Search with Permissions and it addresses an ask from the community for an endpoint to list the objects a user has permissions for.
 
 - **What use cases does it support?**
   Search with Permissions where the number of objects of a particular type the user could have access to is low (~ thousands), and the percentage of the total objects that the user can have access to is also low.
