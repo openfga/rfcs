@@ -262,14 +262,20 @@ The `/stores/{store_id}/lookup:streamed` HTTP path mapping for the streaming var
 If anyone has any opinions or recommendations we'd love to hear them!
 
 ## Configuration Changes
-- Add a `StreamedLookupDeadline` config param (`--streamed-lookup-deadline` flag)
-
-  This will be used to define the maximum amount of time to stream Lookup results until the server stream is closed. This is to protect the server from misuse of the streaming endpoint. If this config is omitted all object ids will be streamed back to the client (regardless of how many there are).
-
 - Add a `LookupMaxResults` config param (`--lookup-max-results` flag)
 
-  This will be used to define the maximum list size of the list of object ids that are returned in the unary Lookup API endpoint. If this is omitted all object ids will be fetched (regardless of how many there are).
-  
+  This will be used to define the maximum number of results that will be returned by the streaming or unary Lookup API endpoints. If this config is omitted then the server
+  will not limit the response to a finite number of results.
+
+- Add a `LookupDeadline` config param (`--lookup-deadline` flag)
+
+  This will be used to define the maximum amount of time to accumulate Lookup results until the server responds. If this config is omitted then the server will
+  wait indefinitely to resolve all object lookups.
+
+If both the `LookupMaxResults` and `LookupDeadline` configs are provided, then whichever condition is met first wins. For example, if the deadline is 5s and the limit is
+10, then if 10 results are available before 5s the server will respond at that moment. If the deadline is 5s and the limit is 10, then if only 5 results are available when
+the deadline is reached then the server will respond at that moment.
+
 For production usage we should document recommendations for these configuration limits so as to protect the server from memory exhaustion or costly Lookup queries.
 
 ## Server Changes
