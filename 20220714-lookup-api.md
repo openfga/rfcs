@@ -289,7 +289,7 @@ func (s *Server) ListObjects(
 ```
 
 Sample code implementing these proposed changes can be found here:
-https://github.com/openfga/openfga/tree/lookup-poc (server changes) which depends on https://github.com/openfga/api/tree/lookup-api (protobuf API changes)
+https://github.com/openfga/openfga/tree/listObjects-poc (server changes) which depends on https://github.com/openfga/api/tree/listObjects-api (protobuf API changes)
 
 ### Storage Interface Changes
 The [`OpenFGADatastore`](https://github.com/openfga/openfga/blob/170a6834d057428e3b0d250cae47a01f5a61898f/storage/storage.go#L132) interface will need to be expanded or modified to support queries for all objects of a particular object type (within a store). Today our datastore/storage interface only has the [`Read`](https://github.com/openfga/openfga/blob/170a6834d057428e3b0d250cae47a01f5a61898f/storage/storage.go#L51) method, but it requires a storeID and tuple key specifying either the `object` or `user` field (or both). The ListObjects work will need a method that supports only providing the storeID and object `type`.
