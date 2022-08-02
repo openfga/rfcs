@@ -76,7 +76,7 @@ and the following relationship tuples:
 ## StreamedListObjects
 StreamedListObjects will implement a grpc [server streaming RPC](https://grpc.io/docs/what-is-grpc/core-concepts/#server-streaming-rpc) endpoint.
 
-The endpoint will stream each object id the target user has the given relationship with as it is evaluated, and the server will continuing streaming results until either the list has been exhausted or the `listObjects-deadline` has been reached (see [Configuration Changes](#configuration-changes)).
+The endpoint will stream each object id the target user has the given relationship with as it is evaluated, and the server will continuing streaming results until either the list has been exhausted, the `listObjects-max-results` has been reached, or the `listObjects-deadline` has been reached (see [Configuration Changes](#configuration-changes)).
 
 Sample grpcurl command:
 ```
