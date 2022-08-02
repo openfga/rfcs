@@ -3,7 +3,7 @@
 - **Name**: ListObjects API
 - **Start Date**: 2022-07-14
 - **Author(s)**: jon-whit
-- **Status**: Draft <!-- Acceptable values: Draft, Approved, On Hold, Superseded -->
+- **Status**: Approved <!-- Acceptable values: Draft, Approved, On Hold, Superseded -->
 - **RFC Pull Request**: (leave blank)
 - **Relevant Issues**:
   - https://github.com/openfga/openfga/issues/101
