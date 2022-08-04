@@ -4,7 +4,7 @@
 - **Start Date**: 2022-07-14
 - **Author(s)**: jon-whit
 - **Status**: Approved <!-- Acceptable values: Draft, Approved, On Hold, Superseded -->
-- **RFC Pull Request**: #3
+- **RFC Pull Request**: https://github.com/openfga/rfcs/pull/3
 - **Relevant Issues**:
   - https://github.com/openfga/openfga/issues/101
   - https://github.com/openfga/api/issues/10
