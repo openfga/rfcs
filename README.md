@@ -65,8 +65,6 @@ Once an RFC has been accepted, the sub-team maintainers should:
 
 Once an `issues-created/<sub-team>` label has been created for each sub-team, the RFC is ready to merge. The team member who merges the pull request should do the following:
 
-1. Assign an id based off the pull request number.
-1. Rename the file based off the ID inside `text/`.
 1. Fill in the remaining metadata at the top.
 1. Commit everything.
 1. Update issues with RFC ID and a link to the text file.
