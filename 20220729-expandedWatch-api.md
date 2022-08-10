@@ -228,7 +228,7 @@ The following API definition provides a demonstration of what the ConnectedObjec
 ```
 type ConnectedObjectsRequest struct {
   StoreID              string
-  
+
   // If omitted, the latest authorization model will be used
   AuthorizationModelID string
 
