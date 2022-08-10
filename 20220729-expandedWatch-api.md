@@ -217,13 +217,84 @@ message Object {
 ```
 
 ### ConnectedObjects API (internal)
-**Summary**: Given a user or userset, the ConnectedObjects API will return all of the (object, relation) pairs in the graph of relationships that are connected (directly or indirectly) to it.
+**Summary**: ConnectedObjects is a reverse form of Expand. That is, given a user or userset, the ConnectedObjects API will return all of the (object, relation) pairs in the graph of relationships that are connected (directly or indirectly) to it, optionally filtered by a specific object type.
 
-The ConnectedObjects API can be considered as an unfiltered form of the ListObjects API. That is, ConnectedObjects returns all of the objects of any type that the user or userset has a given relation with.
+The ConnectedObjects API can be considered as an unfiltered form of the ListObjects API. That is, ConnectedObjects returns all of the objects of any type that the user or userset has a given relation with (both direct and indirect relationships in the graph of relationships).
 
 When a tuple change is received from the [ReadChanges API][read-changes], then the ConnectedObjects API will be used to compute the object relationships in the graph that could be impacted by the tuple change.
 
+The following API definition provides a demonstration of what the ConnectedObjects API may look like:
 
+```
+type ConnectedObjectsRequest struct {
+  StoreID              string
+  
+  // If omitted, the latest authorization model will be used
+  AuthorizationModelID string
+
+  // A user or userset
+  User                 string
+
+  // If specified then ConnectedObjects will only return the objects connected to the provided user/userset that are of this type
+  OptionalObjectTypes   string
+}
+
+type ObjectRelation struct {
+  Object   string // e.g. document:doc1
+  Relation string
+}
+
+func ConnectedObjects(req ConnectedObjectsRequest) ([]ObjectRelation, error)
+```
+
+
+
+For example, consider the following authorization model and relationship tuples:
+
+```
+type group
+  relations
+    define member as self
+
+type folder
+  relations
+    define viewer as self
+
+type document
+  relations
+    define parent as self
+    define editor as self
+    define viewer as self or editor or viewer from parent
+```
+
+| object            | relation | user                 |
+|-------------------|----------|----------------------|
+| folder:folder1    | viewer   | group:openfga#member |
+| document:doc1     | parent   | folder:folder1       |
+
+Here are some examples of what the `ConnectedObjects` API would return with the model and relationship tuples above.
+```
+result := ConnectedObjects({
+  StoreID: "example",
+  User: "group:openfga#member"
+})
+
+print(result)
+["folder:folder1#viewer", "document:doc1#viewer"]
+```
+
+similarly,
+```
+result := ConnectedObjects({
+  StoreID: "example",
+  User: "document:doc1#editor",
+})
+
+print(result)
+["document:doc1#viewer"]
+```
+
+Notice that direct and indirect relationships through userset rewrites are expanded.
 
 ### ExpandUsers API (internal)
 **Summary**: Given a user or userset (e.g. object#relation), ExpandUsers will return all of the user ids (direct or indirect) that the userset expands to. This is a recursive form of the existing Expand API on the provided userset.
