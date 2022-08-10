@@ -217,6 +217,13 @@ message Object {
 ```
 
 ### ConnectedObjects API (internal)
+**Summary**: Given a user or userset, the ConnectedObjects API will return all of the (object, relation) pairs in the graph of relationships that are connected (directly or indirectly) to it.
+
+The ConnectedObjects API can be considered as an unfiltered form of the ListObjects API. That is, ConnectedObjects returns all of the objects of any type that the user or userset has a given relation with.
+
+When a tuple change is received from the [ReadChanges API][read-changes], then the ConnectedObjects API will be used to compute the object relationships in the graph that could be impacted by the tuple change.
+
+
 
 ### ExpandUsers API (internal)
 **Summary**: Given a user or userset (e.g. object#relation), ExpandUsers will return all of the user ids (direct or indirect) that the userset expands to. This is a recursive form of the existing Expand API on the provided userset.
