@@ -45,6 +45,8 @@ At the moment, our authorization model does not allow users to indicate what the
 
 ## What it is?
 
+### Adding Type Restrictions
+
 This RFC proposes an update to the OpenFGA JSON syntax requiring users to indicate all the types of users that could be **directly related** to an object of a certain type through a particular relation.
 
 For example,
@@ -103,7 +105,7 @@ If a tuple such as `user=team:1#member, relation=member, object=group:2` needs t
 
 As an example:
 
-```javascript
+```json
 { "type_definitions": [
   { "type": "user" },
   { "type": "group",
@@ -121,6 +123,23 @@ As an example:
 ] }
 ```
 
+### Adding a Schema Version Field
+
+In order to make sure we can easily parse the model across updates (and this will be especially true when breaking changes are introduced), we are proposing to add a version to the model.
+
+This version will be called the `schema_version` in order not be confused with an update to the authorization model itself (frequently referenced as a new authorization model version). It will be of the form "x.y", where both `x` and `y` are non-negative integers. `x` will start from `1` instead of `0`, so the initial version of the authorization model will be `1.0` and this RFC once implemented will introduce `1.1`.
+
+This field is optional, and when missing will be interpreted as being `1.0`.
+
+```json
+{
+  "schema_version": "1.1",
+  "type_definitions": [
+}
+```
+
+### Examples
+
 You can see some examples of how authorization models will need to change with this new proposed extension in [this PR](https://github.com/openfga/sample-stores/pull/4).
 
 <details>
@@ -130,6 +149,7 @@ You can see some examples of how authorization models will need to change with t
 
 ```json
 {
++ "schema_version": "1.1",
   "type_definitions": [
 +   { "type": "user" },
     {
@@ -225,6 +245,7 @@ You can see some examples of how authorization models will need to change with t
 
 ```json
 {
++ "schema_version": "1.1",
   "type_definitions": [
 +   { "type": "user" },
     {
@@ -317,7 +338,8 @@ When writing new models in the new syntax, we need to validate:
    3. no duplicates are present
 
 ```javascript
-{ "type_definitions": [
+{ "schema_version": "1.1",
+  "type_definitions": [
   { "type": "user" },
   { "type": "group",
     "relations": {
@@ -348,8 +370,9 @@ When writing new models in the new syntax, we need to validate:
 
 We'll use the following example authorization model:
 
-```javascript
-{ "type_definitions": [
+```json
+{ "schema_version": "1.1",
+  "type_definitions": [
   { "type": "user" },
   { "type": "group",
     "relations": {
@@ -466,7 +489,7 @@ Syntax transformer will need to be updated to support both the new JSON syntax a
 
 ### Require the resolved type to be indicated instead of the direct types
 
-```javascript
+```json
 { "type_definitions": [
   { "type": "user" },
   { "type": "group",
@@ -499,7 +522,7 @@ type_definitions:
         defined_as: self
       editor:
         resolves_to: user
-        defined_as: parent // we can detect an error
+        defined_as: parent # we can detect an error, because parent resolves to folder instead of user
 ```
 
 This alternative would have been our choice had we been optimizing for developer experience instead of for resolving the ExpandedWatch/ListObjects use-case. However, because it does not help us narrow down the address space when traversing the graph in reverse, it was deemed insufficient to meet our needs.
@@ -507,7 +530,8 @@ This alternative would have been our choice had we been optimizing for developer
 ### Add the assignable types directly in the main relation
 
 It would have been cleaner to introduce the assignable types into the relation object like so:
-```javascript
+
+```json
 { "type_definitions": [
   { "type": "user" },
   { "type": "group",
