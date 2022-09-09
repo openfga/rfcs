@@ -54,46 +54,46 @@ For example,
 - parents of a document have to be objects of type folder
 - owners of a repository have to be of type user or a userset of group members
 
-We will add an `assignable_relations` to each relation to indicate what types of users can be directly related to it.
+We will add an `directly_related_user_types` to each relation to indicate what types of users can be directly related to it.
 
-`assignable_relations` will be an array of objects, each object must have a type and an optional relation.
+`directly_related_user_types` will be an array of objects, each object must have a type and an optional relation.
 
-- having the following `"parent": { "assignable_relations": [{ "type": "group" }] }` in the group type definition indicates that only objects of type group can be directly related to a group as parent
-- having the following `"member": { "assignable_relations": [{ "type": "user" }, { "type": "group", "relation": "member" }] }` in the group type definition indicates that only objects of type user or usersets of type group and relation member can be directly related to a group as member
-- having the following `"member": { "assignable_relations": [{ "type": "user", "any": true }, { "type": "employee", "any": true }] }` in the group type definition indicates that the `*` syntax is allowed and that when present, it means all objects of type `user` or `employee` can be directly related to a `group` as `member`
+- having the following `"parent": { "directly_related_user_types": [{ "type": "group" }] }` in the group type definition indicates that only objects of type group can be directly related to a group as parent
+- having the following `"member": { "directly_related_user_types": [{ "type": "user" }, { "type": "group", "relation": "member" }] }` in the group type definition indicates that only objects of type user or usersets of type group and relation member can be directly related to a group as member
+- having the following `"member": { "directly_related_user_types": [{ "type": "user", "any": true }, { "type": "employee", "any": true }] }` in the group type definition indicates that the `*` syntax is allowed and that when present, it means all objects of type `user` or `employee` can be directly related to a `group` as `member`
 
 This will affect only relations that are [directly related](https://openfga.dev/docs/modeling/building-blocks/direct-relationships) (as in they are considered "assignable" and have [the direct relationship keyword ("this")](https://openfga.dev/docs/configuration-language#the-direct-relationship-keyword) in their relation definition).
 For relation definitions that:
 
-- have the direct relationship keyword (this): `assignable_relations` must be present and MUST be an non-empty array containing at least one type/relation combination
-- do not have the direct relationship keyword: `assignable_relations` can optionally be present, but if it does MUST be an empty array
+- have the direct relationship keyword (this): `directly_related_user_types` must be present and MUST be an non-empty array containing at least one type/relation combination
+- do not have the direct relationship keyword: `directly_related_user_types` can optionally be present, but if it does MUST be an empty array
 
 > Note: This syntax does not offer a way to enforce restrictions based on what the userset of group members resolves to (for example, group member can be a user, an employee or another userset). Later on, tooling can help visually indicate this to the user inline.
 
-To prevent breaking changes, this will be done by appending a new field called `metadata` -> `relations` to each type definition. Each relation will be a key under this that is a map that contains a field called `assignable_relations` that contains what type or type and relation combination could be directly related to it. If the `*` element is valid for that relation, then the type and `any: true` need to be in the `assignable_relations`. If multiple entries that contains `any: true` are present, a `*` in a relationship tuple will be interpreted to mean any user of the union of those types.
+To prevent breaking changes, this will be done by appending a new field called `metadata` -> `relations` to each type definition. Each relation will be a key under this that is a map that contains a field called `directly_related_user_types` that contains what type or type and relation combination could be directly related to it. If the `*` element is valid for that relation, then the type and `any: true` need to be in the `directly_related_user_types`. If multiple entries that contains `any: true` are present, a `*` in a relationship tuple will be interpreted to mean any user of the union of those types.
 
-An assignable relation cannot contain both a `relation` key and an `any` key. If the `any` key is excluded, it will be interpreted to be `any: false`.
+A directly related user type cannot contain both a `relation` key and an `any` key. If the `any` key is excluded, it will be interpreted to be `any: false`.
 
 The introduced `metadata` entry in the type definition would look like:
 
 ```typescript
-type AssignableRelationBase = {
+type DirectlyRelatedUserTypeBase = {
   type: string;
 };
 
-type AssignableRelationRelation = {
+type DirectlyRelatedUserTypeRelation = {
   relation?: string;
 };
 
-type AssignableRelationAnyOf = {
+type DirectlyRelatedUserTypeAny = {
   any?: boolean;
 };
 
-type AssignableRelation = AssignableRelationBase &
-  (AssignableRelationRelation | AssignableRelationAnyOf);
+type DirectlyRelatedUserType = DirectlyRelatedUserTypeBase &
+  (DirectlyRelatedUserTypeRelation | DirectlyRelatedUserTypeAny);
 
 type RelationMetadata = {
-  assignable_relations?: AssignableRelation[];
+  directly_related_user_types?: DirectlyRelatedUserType[];
 };
 
 type Metadata = {
@@ -101,7 +101,7 @@ type Metadata = {
 };
 ```
 
-If a tuple such as `user=team:1#member, relation=member, object=group:2` needs to be added, then the `member` relation on the `group` type must have `{"type":"group","relation":"member"}` as one of its assignable types.
+If a tuple such as `user=team:1#member, relation=member, object=group:2` needs to be added, then the `member` relation on the `group` type must have `{"type":"group","relation":"member"}` as one of its directly related user types.
 
 As an example:
 
@@ -115,8 +115,8 @@ As an example:
     },
     "metadata": {
       "relations": {
-        "parent": { "assignable_relations": [{ "type": "group" }] },
-        "member": { "assignable_relations": [{ "type": "user", "any": true }, { "type": "group", "relation": "member" }] }
+        "parent": { "directly_related_user_types": [{ "type": "group" }] },
+        "member": { "directly_related_user_types": [{ "type": "user", "any": true }, { "type": "group", "relation": "member" }] }
       }
     }
   },
@@ -174,12 +174,12 @@ You can see some examples of how authorization models will need to change with t
 +     "metadata": {
 +       "relations": {
 +         "subscriber": {
-+           "assignable_relations": [{
++           "directly_related_user_types": [{
 +             "type": "organization"
 +           }],
 +         },
 +         "subscriber_member": {
-+           "assignable_relations": []
++           "directly_related_user_types": []
 +         }
 +       }
       }
@@ -194,7 +194,7 @@ You can see some examples of how authorization models will need to change with t
 +     "metadata": {
 +       "relations": {
 +         "member": {
-+           "assignable_relations": [{
++           "directly_related_user_types": [{
 +             "type": "user"
 +           }]
 +        }
@@ -222,12 +222,12 @@ You can see some examples of how authorization models will need to change with t
 +     "metadata": {
 +       "relations": {
 +         "associated_plan": {
-+           "assignable_relations": [{
++           "directly_related_user_types": [{
 +             "type": "plan"
 +           }]
 +         },
 +         "access": {
-+           "assignable_relations": []
++           "directly_related_user_types": []
 +         }
 +       }
       }
@@ -270,10 +270,10 @@ You can see some examples of how authorization models will need to change with t
 +     "metadata": {
 +       "relations": {
 +         "approver": {
-+           "assignable_relations": []
++           "directly_related_user_types": []
 +         },
 +         "submitter": {
-+           "assignable_relations": [{
++           "directly_related_user_types": [{
 +               "type": "user"
 +           }]
 +         }
@@ -308,7 +308,7 @@ You can see some examples of how authorization models will need to change with t
 +      "metadata": {
 +        "relations": {
 +          "manager": {
-+            "assignable_relations": [{
++            "directly_related_user_types": [{
 +                "type": "user"
 +            }]
 +          }
@@ -329,10 +329,10 @@ You can see some examples of how authorization models will need to change with t
 
 When writing new models in the new syntax, we need to validate:
 
-1. That the assignable relations array exists, and
+1. That the directly related user types array exists, and
    1. is empty when the relationship definition does not allow this (direct relationships)
    2. is non-empty when the relationship definition does allow this (direct relationships)
-2. When assignable relations are passed, we need to check that:
+2. When directly related user types are passed, we need to check that:
    1. the type is an existing type in the system
    2. the relation is either empty or exists on the type
    3. no duplicates are present
@@ -348,18 +348,18 @@ When writing new models in the new syntax, we need to validate:
       "relation-3": { "this": {} },
       "relation-4": { "this": {} },
       "relation-5": { "this": {} },
-      "relation-6": { "computedUserset": { "object": "", "relation": "relation-6"} },
-      "relation-7": { "computedUserset": { "object": "", "relation": "relation-7"} }
+      "relation-6": { "computedUserset": { "object": "", "relation": "relation-1"} },
+      "relation-7": { "computedUserset": { "object": "", "relation": "relation-1"} }
     },
     "metadata": {
       "relations": {
-        "relation-1": { "assignable_relations": [{ "type": "user" }] }, // valid, user exists as a type
-        "relation-2": { "assignable_relations": [{ "type": "group", "relation": "relation-1" }] }, // valid, group exists as a type, and relation-1 exists on that type
-        "relation-3": { "assignable_relations": [] }, // invalid, relation-3 allows direct relationships, but no assignable relations are set
-        "relation-4": { "assignable_relations": [{ "type": "group", "relation": "relation-0" }] }, // invalid, group exists, but relation-0 does not exist on that type
-        "relation-5": { "assignable_relations": [{ "type": "user" }, { "type": "user" }] }, // invalid, duplicate found
-        "relation-6": { "assignable_relations": [{ "type": "user" }] }, // invalid, relation-6 does not allow direct relationships (no `this` in the relation definition)
-        "relation-7": { "assignable_relations": [] }, // valid, relation-7 does not allow direct relationships, so no elements are expected
+        "relation-1": { "directly_related_user_types": [{ "type": "user" }] }, // valid, user exists as a type
+        "relation-2": { "directly_related_user_types": [{ "type": "group", "relation": "relation-1" }] }, // valid, group exists as a type, and relation-1 exists on that type
+        "relation-3": { "directly_related_user_types": [] }, // invalid, relation-3 allows direct relationships, but no directly related user types are set
+        "relation-4": { "directly_related_user_types": [{ "type": "group", "relation": "relation-0" }] }, // invalid, group exists, but relation-0 does not exist on that type
+        "relation-5": { "directly_related_user_types": [{ "type": "user" }, { "type": "user" }] }, // invalid, duplicate found
+        "relation-6": { "directly_related_user_types": [{ "type": "user" }] }, // invalid, relation-6 does not allow direct relationships (no `this` in the relation definition)
+        "relation-7": { "directly_related_user_types": [] }, // valid, relation-7 does not allow direct relationships, so no elements are expected
       }
     }
   }
@@ -381,8 +381,8 @@ We'll use the following example authorization model:
     },
     "metadata": {
       "relations": {
-        "parent": { "assignable_relations": [{ "type": "group" }] },
-        "member": { "assignable_relations": [{ "type": "user" }, { "type": "group", "relation": "member" }, { "type": "user", "any": true }] }
+        "parent": { "directly_related_user_types": [{ "type": "group" }] },
+        "member": { "directly_related_user_types": [{ "type": "user" }, { "type": "group", "relation": "member" }, { "type": "user", "any": true }] }
       }
     }
   },
@@ -392,17 +392,17 @@ We'll use the following example authorization model:
 On write, we need to validate that:
 
 1. If the user is an object:
-   1. The type of the user should be in the list of assignable relations on the relation of the type of the object
-   - `write(user=user:1, member, group:1)`; valid, the `user` type is in the list of assignable relations for the `member` relation of the `group` type
-   - `write(user=group:2, parent, group:1)`; valid, the `group` type is in the list of assignable relations for the `parent` relation of the `group` type
-   - `write(user=group:2, member, group:1)`; invalid, the `group` type is not in the list of assignable relations for the `member` relation of the `group` type
-   - `write(user=user:1, parent, group:1)`; invalid, the `user` type is not in the list of assignable relations for the `parent` relation of the `group` type
+   1. The type of the user should be in the list of directly related user types on the relation of the type of the object
+   - `write(user=user:1, member, group:1)`; valid, the `user` type is in the list of directly related user types for the `member` relation of the `group` type
+   - `write(user=group:2, parent, group:1)`; valid, the `group` type is in the list of directly related user types for the `parent` relation of the `group` type
+   - `write(user=group:2, member, group:1)`; invalid, the `group` type is not in the list of directly related user types for the `member` relation of the `group` type
+   - `write(user=user:1, parent, group:1)`; invalid, the `user` type is not in the list of directly related user types for the `parent` relation of the `group` type
 
 2. If the user is a userset:
-   - `write(user=group:2#member, member, group:1)`; valid, the `(type=group, relation=member)` is in the list of assignable relations for the `member` relation of the `group` type
-   - `write(user=group:2#member, parent, group:1)`; invalid, the `(type=group, relation=member)` is not in the list of assignable relations for the `parent` relation of the `group` type
-   - `write(user=group:2#parent, member, group:1)`; invalid, the `(type=group, relation=parent)` is not in the list of assignable relations for the `member` relation of the `group` type
-   - `write(user=group:2#parent, parent, group:1)`; invalid, the `(type=group, relation=parent)` is not in the list of assignable relations for the `parent` relation of the `group` type
+   - `write(user=group:2#member, member, group:1)`; valid, the `(type=group, relation=member)` is in the list of directly related user types for the `member` relation of the `group` type
+   - `write(user=group:2#member, parent, group:1)`; invalid, the `(type=group, relation=member)` is not in the list of directly related user types for the `parent` relation of the `group` type
+   - `write(user=group:2#parent, member, group:1)`; invalid, the `(type=group, relation=parent)` is not in the list of directly related user types for the `member` relation of the `group` type
+   - `write(user=group:2#parent, parent, group:1)`; invalid, the `(type=group, relation=parent)` is not in the list of directly related user types for the `parent` relation of the `group` type
 
 3. If the user is `*`:
    - `write(user=*, parent, group:1)`; invalid, the `parent` relation on the `group` type does not allow for any `*` relation
@@ -414,13 +414,13 @@ ListObjects will be the first of the Relationship Query endpoints to take advant
 
 #### Updating Expand to Respect Type Restrictions
 
-Expand will need to be updated to ignore tuples that do not match the assignable tuples in the authorization model.
+Expand will need to be updated to ignore tuples that do not match the directly related user types in the authorization model.
 
 #### Updating Check to Respect Type Restrictions
 
 This will be the final phase and should be undertaken only once we are completely confident of how ListObjects and Expand are performing with the new functionality. Check is the core of OpenFGA, and we should be diligent in making sure it does not break and that any changes are properly communicated.
 
-When the time comes, check will be updated to ignore relationship tuples in the database that do not match the assignable tuples in the authorization model.
+When the time comes, check will be updated to ignore relationship tuples in the database that do not match the directly related user types in the authorization model.
 
 ## Migration
 
@@ -483,7 +483,7 @@ Syntax transformer will need to be updated to support both the new JSON syntax a
 ## Drawbacks
 
 - Floating user_ids with no type can no longer be supported (as adding type restrictions on direct relations requires that objects have a type)
-- The JSON syntax now contains duplicate fields for each relation (the additional one being in metadata containing assignable relations)
+- The JSON syntax now contains duplicate fields for each relation (the additional one being in metadata containing directly related user types)
 
 ## Alternatives
 
@@ -511,33 +511,41 @@ Allowing users to set the types that a relation can resolve to, can help us buil
 
 For example, consider the following model (in psuedocode). If someone writing the authorization model tries to set this as parent, we can raise an error because we know that parent resolves to a folder, while editor needs to resolve to a user. Which would improve the developer experience and help us guide the users to resolve issues in their models.
 
-```yaml
-type_definitions:
-  - type: user
-  - type: folder
-  - type: document
-    relations:
-      parent:
-        resolves_to: folder
-        defined_as: self
-      editor:
-        resolves_to: user
-        defined_as: parent # we can detect an error, because parent resolves to folder instead of user
+```javascript
+{ "type_definitions": [
+  { "type": "user" },
+  { "type": "folder" },
+  { "type": "document",
+    "relations": {
+      "parent": { 
+        "user_types": ["folder"],
+        "this": {}
+      },
+      "editor": {
+        "user_types": ["user"],
+        "computedUserset": {
+          "object": "",
+          "relation": "parent" // we can detect an error, because parent resolves to folder while editor expects user
+        }
+      },
+    }
+  },
+] }
 ```
 
 This alternative would have been our choice had we been optimizing for developer experience instead of for resolving the ExpandedWatch/ListObjects use-case. However, because it does not help us narrow down the address space when traversing the graph in reverse, it was deemed insufficient to meet our needs.
 
-### Add the assignable types directly in the main relation
+### Add the Directly Related User Types Directly in the Main Relation
 
-It would have been cleaner to introduce the assignable types into the relation object like so:
+It would have been cleaner to introduce the directly related user types into the relation object like so:
 
 ```json
 { "type_definitions": [
   { "type": "user" },
   { "type": "group",
     "relations": {
-      "parent": { "assignable_relations": [{ "type": "group" }], "this": {} },
-      "member": { "assignable_relations": [{ "type": "user" }, { "type": "group", "relation": "member" }], "this": {} },
+      "parent": { "directly_related_user_types": [{ "type": "group" }], "this": {} },
+      "member": { "directly_related_user_types": [{ "type": "user" }, { "type": "group", "relation": "member" }], "this": {} },
     }
   },
 ] }
