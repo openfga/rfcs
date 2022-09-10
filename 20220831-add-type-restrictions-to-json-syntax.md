@@ -11,6 +11,7 @@
   - https://github.com/openfga/rfcs/pull/3
   - https://github.com/openfga/rfcs/pull/4
   - https://github.com/openfga/api/pull/27
+  - https://github.com/openfga/syntax-transformer/pull/47
 - **Supersedes**: N/A
 
 ## Summary
@@ -24,7 +25,7 @@ Allow users to indicate in their store's authorization model what types of objec
 - [ListObjects Endpoint](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects)
 - [What is a user?](https://openfga.dev/docs/concepts#what-is-a-user)
 - Floating User ID: A user identifier without a type (e.g. `anne`, `4` or `4179af14-f0c0-4930-88fd-5570c7bf6f59`)
-- Reverse Expansion: Normally [expand](https://openfga.dev/docs/interacting/relationship-queries#expand) takes an object and relation and returns the first leaves of users who are related. Reverse expand would be the opposite, taking a user and a relation and retuning the objects who are related.
+- Reverse Expansion: Normally [expand](https://openfga.dev/docs/interacting/relationship-queries#expand) takes an object and relation and returns the first leaves of users who are related. Reverse expand would be the opposite, taking a user and a relation and returning the objects which are related.
 
 ## Motivation
 
@@ -66,11 +67,13 @@ This will affect only relations that are [directly related](https://openfga.dev/
 For relation definitions that:
 
 - have the direct relationship keyword (this): `directly_related_user_types` must be present and MUST be an non-empty array containing at least one type/relation combination
-- do not have the direct relationship keyword: `directly_related_user_types` can optionally be present, but if it does MUST be an empty array
+- do not have the direct relationship keyword: `directly_related_user_types` can optionally be present, but if it is, it MUST be an empty array
 
 > Note: This syntax does not offer a way to enforce restrictions based on what the userset of group members resolves to (for example, group member can be a user, an employee or another userset). Later on, tooling can help visually indicate this to the user inline.
 
-To prevent breaking changes, this will be done by appending a new field called `metadata` -> `relations` to each type definition. Each relation will be a key under this that is a map that contains a field called `directly_related_user_types` that contains what type or type and relation combination could be directly related to it. If the `*` element is valid for that relation, then the type and `any: true` need to be in the `directly_related_user_types`. If multiple entries that contains `any: true` are present, a `*` in a relationship tuple will be interpreted to mean any user of the union of those types.
+To prevent breaking changes, this will be done by appending a new field called `metadata` -> `relations` to each type definition. Each relation will be a key under this that is a map that contains a field called `directly_related_user_types` that contains what type or type and relation combination could be directly related to it. If the `*` element is valid for that relation, then the type and `any: true` needs to be in the `directly_related_user_types` array.
+
+If there are multiple entries that contains `any: true` in the array, a `*` in a relationship tuple will be interpreted to mean any user of the union of those types. For example, if the `directly_related_user_types` is `[{"type": "user", "any": true}, {"type": "group", "any": true}]`, then when the user is `*`, it will be interpreted as all objects of type `user` and all objects of type `group`.
 
 A directly related user type cannot contain both a `relation` key and an `any` key. If the `any` key is excluded, it will be interpreted to be `any: false`.
 
@@ -101,13 +104,13 @@ type Metadata = {
 };
 ```
 
-If a tuple such as `user=team:1#member, relation=member, object=group:2` needs to be added, then the `member` relation on the `group` type must have `{"type":"group","relation":"member"}` as one of its directly related user types.
+If a tuple such as `user=team:1#member, relation=member, object=group:2` needs to be added, then the `member` relation on the `group` type must have `{"type":"team","relation":"member"}` as one of its directly related user types.
 
 As an example:
 
 ```json
 { "type_definitions": [
-  { "type": "user" },
+  { "type": "user", "relations": {} },
   { "type": "group",
     "relations": {
       "parent": { "this": {} },
@@ -134,7 +137,7 @@ This field is optional, and when missing will be interpreted as being `1.0`.
 ```json
 {
   "schema_version": "1.1",
-  "type_definitions": [
+  "type_definitions": [ ... ]
 }
 ```
 
@@ -340,7 +343,7 @@ When writing new models in the new syntax, we need to validate:
 ```javascript
 { "schema_version": "1.1",
   "type_definitions": [
-  { "type": "user" },
+  { "type": "user", "relations": {} },
   { "type": "group",
     "relations": {
       "relation-1": { "this": {} },
@@ -373,7 +376,7 @@ We'll use the following example authorization model:
 ```json
 { "schema_version": "1.1",
   "type_definitions": [
-  { "type": "user" },
+  { "type": "user", "relations": {} },
   { "type": "group",
     "relations": {
       "parent": { "this": {} },
@@ -435,27 +438,32 @@ Due to the users in the tuples now required to have types in order to enforce th
 This will need to be communicated to developers so that they can migrate accordingly by:
 
 1. Introducing a `user` type to the model
-2. Reading all exiting relationship tuples to find ones with a user that has no type
-3. Writing a mirror of that tuple where the user has the correct type
+2. Reading all exiting relationship tuples to find those with a floatig user id (user that has only an identifier and no type)
+3. Writing a copy of that tuple but with the `user` type
 4. Migrating their app code to perform checks using that type
 
-One option for developers administrating an OpenFGA installation could be a script to check the DB (look for tuples in the DB that do not have `user_type`), and prints the offending store IDs.
+One option for developers administrating an OpenFGA installation could be a script to check the DB (look for tuples in the DB that do not have `user_type`), and print the offending store IDs.
 
 Automatic unassisted tuple migration will not be feasible because it is not possible to know what type end users will want to use for each offending tuple.
 
 ### Affected Modules
 
-This change will affect repositories across the board. It will entail changes to the [protobuf](https://github.com/openfga/api), the [openfga core](https://github.com/openfga/openfga), the DSL, the [syntax transformer](https://github.com/openfga/syntax-transformer), the [SDKs](https://github.com/openfga/sdk-generator), the FGA Playground, the [sample stores](https://github.com/openfga/sample-stores) and the [documentation](https://github.com/openfga/openfga.dev).
+This change will affect repositories across the board. It will entail changes to the [protobufs](https://github.com/openfga/api), the [openfga core](https://github.com/openfga/openfga), the DSL, the [syntax transformer](https://github.com/openfga/syntax-transformer), the [SDKs](https://github.com/openfga/sdk-generator), the FGA Playground, the [sample stores](https://github.com/openfga/sample-stores) and the [documentation](https://github.com/openfga/openfga.dev).
 
 #### Language, API and SDKs
 
-For the scope of this RFC, we are proposing that the initial phase be backwards compatible and not a breaking change. This will allow users on previous versions to keep using them for a while, similarly changes to the public surface of the API and SDKs are reduced.
+For the scope of this RFC, we are proposing that the initial phase be backwards compatible and not a breaking change. This will allow users on previous versions to keep using them during a grace period while keeping changes to the public surface of the API and SDKs to a minimum.
 
-A later RFC can introduce the upgraded syntax where the extension now placed in metadata can be migrated. That phase can be combined with other breaking changes we are introducing to minimize user-disruption.
+A later RFC can introduce the breaking change where the `directly_related_user_types` array is moved out of the metadata and into the relation definition. That phase can be combined with other breaking changes we are introducing to minimize user-disruption.
 
 #### DSL
 
-An update to the DSL needs to happen to support type with no definitions, as a lot of developers will now have to include a user type and it may not have any relations on it.
+As a lot of developers will now have to include a user type and it may not have any relations on it, an update to the DSL needs to happen to support types with no relations: (completed via openfga/syntax-transformer#47)
+
+```python
+type user
+  relations none
+```
 
 An update to the DSL needs to be drafted to support the inclusion of the type restrictions, this should come in a later RFC.
 
@@ -467,18 +475,19 @@ Syntax transformer will need to be updated to support both the new JSON syntax a
 
 1. This RFC is drafted
 2. The [openfga/api#27](https://github.com/openfga/api/pull/27) PR introduces the new fields into the proto-files
-3. The DSL & [openfga/syntax-transformer](https://github.com/openfga/syntax-transformer) are updated to allow empty user type
+3. ~~The DSL & [openfga/syntax-transformer](https://github.com/openfga/syntax-transformer) are updated to allow empty user type~~ (completed via openfga/syntax-transformer#47)
 4. [openfga/openfga.dev](https://github.com/openfga/openfga.dev) is updated to use the user type across the board
 5. [openfga/openfga](https://github.com/openfga/openfga)
    1. Validation is added to prevent writing models with invalid type restrictions (e.g. restricting to a type that does not exist)
    2. Validation is added to prevent writing tuples that do not match the type restrictions
-   3. Read implementations are updated to take the types into consideration
+   3. ListObjects implementation is updated to take the type restrictions into consideration
 6. An RFC for the updated DSL that supports type restrictions is drafted
 7. [openfga/syntax-transformer](https://github.com/openfga/syntax-transformer) is updated with support for the new DSL and JSON syntax
 8. Playground is updated with the latest syntax-transformer changes
 9. [openfga/sdk-generator](https://github.com/openfga/sdk-generator) is updated to reflect the changes in the proto files
 10. [openfga/sample-stores](https://github.com/openfga/sample-stores) is updated with the type restrictions
 11. [openfga/openfga.dev](https://github.com/openfga/openfga.dev) is updated to include type restrictions in the documentation
+12. Expand and Check implementations are updated to take the type restrictions into consideration
 
 ## Drawbacks
 
@@ -491,7 +500,7 @@ Syntax transformer will need to be updated to support both the new JSON syntax a
 
 ```json
 { "type_definitions": [
-  { "type": "user" },
+  { "type": "user", "relations": {} },
   { "type": "group",
     "relations": {
       "parent": { "this": {} },
@@ -513,7 +522,7 @@ For example, consider the following model (in psuedocode). If someone writing th
 
 ```javascript
 { "type_definitions": [
-  { "type": "user" },
+  { "type": "user", "relations": {} },
   { "type": "folder" },
   { "type": "document",
     "relations": {
@@ -541,7 +550,7 @@ It would have been cleaner to introduce the directly related user types into the
 
 ```json
 { "type_definitions": [
-  { "type": "user" },
+  { "type": "user", "relations": {} },
   { "type": "group",
     "relations": {
       "parent": { "directly_related_user_types": [{ "type": "group" }], "this": {} },
