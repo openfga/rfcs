@@ -26,6 +26,7 @@ Allow users to indicate in their store's authorization model what types of objec
 - [What is a user?](https://openfga.dev/docs/concepts#what-is-a-user)
 - Floating User ID: A user identifier without a type (e.g. `anne`, `4` or `4179af14-f0c0-4930-88fd-5570c7bf6f59`)
 - Reverse Expansion: Normally [expand](https://openfga.dev/docs/interacting/relationship-queries#expand) takes an object and relation and returns the first leaves of users who are related. Reverse expand would be the opposite, taking a user and a relation and returning the objects which are related.
+- Representing public access: [`*`](https://openfga.dev/docs/concepts#how-do-i-represent-everyone)
 
 ## Motivation
 
@@ -50,32 +51,17 @@ At the moment, our authorization model does not allow users to indicate what the
 
 This RFC proposes an update to the OpenFGA JSON syntax requiring users to indicate all the types of users that could be **directly related** to an object of a certain type through a particular relation.
 
-For example,
+For example, our current syntax allows expressing the following:
+
+- documents have parents
+- repositories have owners
+
+But cannot express restrictions such as:
 
 - parents of a document have to be objects of type folder
 - owners of a repository have to be of type user or a userset of group members
 
-We will add an `directly_related_user_types` to each relation to indicate what types of users can be directly related to it.
-
-`directly_related_user_types` will be an array of objects, each object must have a type and an optional relation.
-
-- having the following `"parent": { "directly_related_user_types": [{ "type": "group" }] }` in the group type definition indicates that only objects of type group can be directly related to a group as parent
-- having the following `"member": { "directly_related_user_types": [{ "type": "user" }, { "type": "group", "relation": "member" }] }` in the group type definition indicates that only objects of type user or usersets of type group and relation member can be directly related to a group as member
-- having the following `"member": { "directly_related_user_types": [{ "type": "user" }, { "type": "employee" }], "allow_public": true }` in the group type definition indicates that the `*` syntax is allowed and that when present, it means all objects of type `user` or `employee` can be directly related to a `group` as `member`
-
-This will affect only relations that are [directly related](https://openfga.dev/docs/modeling/building-blocks/direct-relationships) (as in they are considered "assignable" and have [the direct relationship keyword ("this")](https://openfga.dev/docs/configuration-language#the-direct-relationship-keyword) in their relation definition).
-For relation definitions that:
-
-- have the direct relationship keyword (this): `directly_related_user_types` must be present and MUST be an non-empty array containing at least one type/relation combination
-- do not have the direct relationship keyword: `directly_related_user_types` can optionally be present, but if it is, it MUST be an empty array
-
-> Note: This syntax does not offer a way to enforce restrictions based on what the userset of group members resolves to (for example, group member can be a user, an employee or another userset). Later on, tooling can help visually indicate this to the user inline.
-
-To prevent breaking changes, this will be done by appending a new field called `metadata` -> `relations` to each type definition. Each relation will be a key under this that is a map that contains a field called `directly_related_user_types` that contains what type or type and relation combination could be directly related to it.
-
-If the `*` element is valid for that relation, then the type and `allow_public: true` needs to be true, if missing it will be read as false. If `allow_public: true` is present, a `*` in a relationship tuple will be interpreted to mean any object whose type is one of the single types (no relation) in the `directly_related_user_types` array (Note: elements that have both type and relation in that array will be ignored). For example, if `allow_public` is true and the `directly_related_user_types` is `[{"type": "user"}, {"type": "group", "relation": "member"}, {"type": "employee"}]`, then when the user is `*`, it will be interpreted as all objects of type `user` and all objects of type `employee`. If `allow_public` is set to `true`, but the `directly_related_user_types` contains no types without relations, the model should be considered invalid.
-
-The introduced `metadata` entry in the type definition would look like:
+We introduce a `metadata` entry in the type definition would look like:
 
 ```typescript
 type Metadata = {
@@ -93,27 +79,48 @@ type DirectlyRelatedUserType = {
 };
 ```
 
-If a tuple such as `user=team:1#member, relation=member, object=group:2` needs to be added, then the `member` relation on the `group` type must have `{"type":"team","relation":"member"}` as one of its directly related user types.
-
-As an example:
+The following is an example of the changes we are proposing, an explanation of the additions will follow:
 
 ```json
 { "type_definitions": [
   { "type": "user", "relations": {} },
+  { "type": "employee", "relations": {} },
   { "type": "group",
     "relations": {
       "parent": { "this": {} },
       "member": { "this": {} },
+      "guest": { "this": {} },
     },
     "metadata": {
       "relations": {
         "parent": { "directly_related_user_types": [{ "type": "group" }] },
-        "member": { "directly_related_user_types": [{ "type": "user" }, { "type": "group", "relation": "member" }], "allow_public": true }
+        "member": { "directly_related_user_types": [{ "type": "employee" }, { "type": "group", "relation": "member" }] },
+        "guest": { "directly_related_user_types": [{ "type": "user" }, { "type": "employee" }, { "type": "group", "relation": "member" }], "allow_public": true }
       }
     }
-  },
+  }
 ] }
 ```
+
+A `directly_related_user_types` array to each relation to indicate what types of users can be directly related to the relation. It will be an array of objects, each object must have a type and an optional relation.
+
+- having the following `"parent": { "directly_related_user_types": [{ "type": "group" }] }` in the `group` type definition indicates that only objects of type `group` can be directly related to a `group` as `parent`
+- having the following `"member": { "directly_related_user_types": [{ "type": "user" }, { "type": "group", "relation": "member" }] }` in the `group` type definition indicates that only objects of type `user` or usersets of type `group` and relation `member` can be directly related to a `group` as `member`
+- having the following `"member": { "directly_related_user_types": [{ "type": "user" }, { "type": "employee" }], "allow_public": true }` in the `group` type definition indicates that the `*` syntax is allowed and that when present, it means all objects of type `user` or `employee` can be directly related to a `group` as `member`
+
+This will affect only relations that are [directly related](https://openfga.dev/docs/modeling/building-blocks/direct-relationships) (as in they are considered "assignable" and have [the direct relationship keyword ("this")](https://openfga.dev/docs/configuration-language#the-direct-relationship-keyword) in their relation definition).
+For relation definitions that:
+
+- have the direct relationship keyword (this): `directly_related_user_types` must be present and MUST be an non-empty array containing at least one type/relation combination
+- do not have the direct relationship keyword: `directly_related_user_types` can optionally be present, but if it is, it MUST be an empty array
+
+> Note: This syntax does not offer a way to enforce restrictions based on what the userset of group members resolves to (for example, group member can be a user, an employee or another userset). Later on, tooling can help visually indicate this to the user inline.
+
+To prevent breaking changes, this will be done by appending a new field called `metadata` -> `relations` to each type definition. Each relation will be a key under this that is a map that contains a field called `directly_related_user_types` that contains what type or type and relation combination could be directly related to it and another called `allow_public` that defines whether the `*` is valid.
+
+The `*` element is valid only if `allow_public` is true, if missing it will be read as false. If `allow_public: true` is present, a `*` in a relationship tuple will be interpreted to mean any object whose type is one of the single types (no relation) in the `directly_related_user_types` array (Note: elements that have both type and relation in that array will be ignored). For example, if `allow_public` is true and the `directly_related_user_types` is `[{"type": "user"}, {"type": "group", "relation": "member"}, {"type": "employee"}]`, then when the user is `*`, it will be interpreted as all objects of type `user` and all objects of type `employee`. If `allow_public` is set to `true`, but the `directly_related_user_types` contains no types without relations, the model should be considered invalid. If `allow_public` is false, any tuple where the user is `*` will be rejected on writes and ignored when evaluating.
+
+If a tuple such as `user=team:1#member, relation=member, object=group:2` needs to be added, then the `member` relation on the `group` type must have `{"type":"team","relation":"member"}` as one of its directly related user types.
 
 ### Adding a Schema Version Field
 
