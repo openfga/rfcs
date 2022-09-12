@@ -106,7 +106,7 @@ A `directly_related_user_types` array to each relation to indicate what types of
 
 - having the following `"parent": { "directly_related_user_types": [{ "type": "group" }] }` in the `group` type definition indicates that only objects of type `group` can be directly related to a `group` as `parent`
 - having the following `"member": { "directly_related_user_types": [{ "type": "user" }, { "type": "group", "relation": "member" }] }` in the `group` type definition indicates that only objects of type `user` or usersets of type `group` and relation `member` can be directly related to a `group` as `member`
-- having the following `"member": { "directly_related_user_types": [{ "type": "user" }, { "type": "employee" }], "allow_public": true }` in the `group` type definition indicates that the `*` syntax is allowed and that when present, it means all objects of type `user` or `employee` can be directly related to a `group` as `member`
+- having the following `"guest": { "directly_related_user_types": [{ "type": "user" }, { "type": "employee" }], "allow_public": true }` in the `group` type definition indicates that the `*` syntax is allowed and that when present, it means all objects of type `user` or `employee` can be directly related to a `group` as `guest`
 
 This will affect only relations that are [directly related](https://openfga.dev/docs/modeling/building-blocks/direct-relationships) (as in they are considered "assignable" and have [the direct relationship keyword ("this")](https://openfga.dev/docs/configuration-language#the-direct-relationship-keyword) in their relation definition).
 For relation definitions that:
@@ -146,7 +146,7 @@ You can see some examples of how authorization models will need to change with t
 
 [Entitlements Sample Store](https://github.com/openfga/sample-stores/tree/d2306e22c4348dd85043b49beaf20c6e082b8811/stores/entitlements)
 
-```json
+```diff
 {
 + "schema_version": "1.1",
   "type_definitions": [
@@ -242,7 +242,7 @@ You can see some examples of how authorization models will need to change with t
 
 [Expenses Sample Store](https://github.com/openfga/sample-stores/tree/d2306e22c4348dd85043b49beaf20c6e082b8811/stores/expenses)
 
-```json
+```diff
 {
 + "schema_version": "1.1",
   "type_definitions": [
