@@ -61,7 +61,7 @@ We will add an `directly_related_user_types` to each relation to indicate what t
 
 - having the following `"parent": { "directly_related_user_types": [{ "type": "group" }] }` in the group type definition indicates that only objects of type group can be directly related to a group as parent
 - having the following `"member": { "directly_related_user_types": [{ "type": "user" }, { "type": "group", "relation": "member" }] }` in the group type definition indicates that only objects of type user or usersets of type group and relation member can be directly related to a group as member
-- having the following `"member": { "directly_related_user_types": [{ "type": "user", "any": true }, { "type": "employee", "any": true }] }` in the group type definition indicates that the `*` syntax is allowed and that when present, it means all objects of type `user` or `employee` can be directly related to a `group` as `member`
+- having the following `"member": { "directly_related_user_types": [{ "type": "user" }, { "type": "employee" }], "allow_public": true }` in the group type definition indicates that the `*` syntax is allowed and that when present, it means all objects of type `user` or `employee` can be directly related to a `group` as `member`
 
 This will affect only relations that are [directly related](https://openfga.dev/docs/modeling/building-blocks/direct-relationships) (as in they are considered "assignable" and have [the direct relationship keyword ("this")](https://openfga.dev/docs/configuration-language#the-direct-relationship-keyword) in their relation definition).
 For relation definitions that:
@@ -71,36 +71,25 @@ For relation definitions that:
 
 > Note: This syntax does not offer a way to enforce restrictions based on what the userset of group members resolves to (for example, group member can be a user, an employee or another userset). Later on, tooling can help visually indicate this to the user inline.
 
-To prevent breaking changes, this will be done by appending a new field called `metadata` -> `relations` to each type definition. Each relation will be a key under this that is a map that contains a field called `directly_related_user_types` that contains what type or type and relation combination could be directly related to it. If the `*` element is valid for that relation, then the type and `any: true` needs to be in the `directly_related_user_types` array.
+To prevent breaking changes, this will be done by appending a new field called `metadata` -> `relations` to each type definition. Each relation will be a key under this that is a map that contains a field called `directly_related_user_types` that contains what type or type and relation combination could be directly related to it.
 
-If there are multiple entries that contains `any: true` in the array, a `*` in a relationship tuple will be interpreted to mean any user of the union of those types. For example, if the `directly_related_user_types` is `[{"type": "user", "any": true}, {"type": "group", "any": true}]`, then when the user is `*`, it will be interpreted as all objects of type `user` and all objects of type `group`.
-
-A directly related user type cannot contain both a `relation` key and an `any` key. If the `any` key is excluded, it will be interpreted to be `any: false`.
+If the `*` element is valid for that relation, then the type and `allow_public: true` needs to be true, if missing it will be read as false. If `allow_public: true` is present, a `*` in a relationship tuple will be interpreted to mean any object whose type is one of the single types (no relation) in the `directly_related_user_types` array (Note: elements that have both type and relation in that array will be ignored). For example, if `allow_public` is true and the `directly_related_user_types` is `[{"type": "user"}, {"type": "group", "relation": "member"}, {"type": "employee"}]`, then when the user is `*`, it will be interpreted as all objects of type `user` and all objects of type `employee`. If `allow_public` is set to `true`, but the `directly_related_user_types` contains no types without relations, the model should be considered invalid.
 
 The introduced `metadata` entry in the type definition would look like:
 
 ```typescript
-type DirectlyRelatedUserTypeBase = {
-  type: string;
+type Metadata = {
+  relations?: Record<string, RelationMetadata>;
 };
-
-type DirectlyRelatedUserTypeRelation = {
-  relation?: string;
-};
-
-type DirectlyRelatedUserTypeAny = {
-  any?: boolean;
-};
-
-type DirectlyRelatedUserType = DirectlyRelatedUserTypeBase &
-  (DirectlyRelatedUserTypeRelation | DirectlyRelatedUserTypeAny);
 
 type RelationMetadata = {
+  allow_public?: Boolean;
   directly_related_user_types?: DirectlyRelatedUserType[];
 };
 
-type Metadata = {
-  relations?: Record<string, RelationMetadata>;
+type DirectlyRelatedUserType = {
+  type: string;
+  relation?: string;
 };
 ```
 
@@ -119,7 +108,7 @@ As an example:
     "metadata": {
       "relations": {
         "parent": { "directly_related_user_types": [{ "type": "group" }] },
-        "member": { "directly_related_user_types": [{ "type": "user", "any": true }, { "type": "group", "relation": "member" }] }
+        "member": { "directly_related_user_types": [{ "type": "user" }, { "type": "group", "relation": "member" }], "allow_public": true }
       }
     }
   },
@@ -132,7 +121,7 @@ In order to make sure we can easily parse the model across updates (and this wil
 
 This version will be called the `schema_version` in order not be confused with an update to the authorization model itself (frequently referenced as a new authorization model version). It will be of the form "x.y", where both `x` and `y` are non-negative integers. `x` will start from `1` instead of `0`, so the initial version of the authorization model will be `1.0` and this RFC once implemented will introduce `1.1`.
 
-This field is optional, and when missing will be interpreted as being `1.0`.
+This field is optional, and when missing will be interpreted as being `1.0`. The schema version can only be one of the existing versions ("1.0" and "1.1" at the time of this RFC).
 
 ```json
 {
@@ -385,7 +374,7 @@ We'll use the following example authorization model:
     "metadata": {
       "relations": {
         "parent": { "directly_related_user_types": [{ "type": "group" }] },
-        "member": { "directly_related_user_types": [{ "type": "user" }, { "type": "group", "relation": "member" }, { "type": "user", "any": true }] }
+        "member": { "directly_related_user_types": [{ "type": "user" }, { "type": "group", "relation": "member" }, { "type": "employee" }], "allow_public": true }
       }
     }
   },
@@ -408,8 +397,8 @@ On write, we need to validate that:
    - `write(user=group:2#parent, parent, group:1)`; invalid, the `(type=group, relation=parent)` is not in the list of directly related user types for the `parent` relation of the `group` type
 
 3. If the user is `*`:
-   - `write(user=*, parent, group:1)`; invalid, the `parent` relation on the `group` type does not allow for any `*` relation
-   - `write(user=*, member, group:1)`; valid, the `member` relation on the `group` type allows for the `*` relation (and it will be considered all objects of type `user`)
+   - `write(user=*, parent, group:1)`; invalid, the `parent` relation on the `group` type does not have `allow_public: true`
+   - `write(user=*, member, group:1)`; valid, the `member` relation on the `group` type has `allow_public: true` and thus allows for the `*` relation (and it will be considered all objects of type `user` or type `employee`)
 
 #### Updating ListObjects to Respect Type Restrictions
 
