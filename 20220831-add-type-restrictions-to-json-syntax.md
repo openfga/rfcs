@@ -6,12 +6,12 @@
 - **Start Date**: 2022-08-31
 - **Author(s)**: [rhamzeh](https://github.com/rhamzeh)
 - **Status**: Draft <!-- Acceptable values: Draft, Approved, On Hold, Superseded -->
-- **RFC Pull Request**: https://github.com/openfga/rfcs/pull/7
+- **RFC Pull Request**: <https://github.com/openfga/rfcs/pull/7>
 - **Relevant Issues**:
-  - https://github.com/openfga/rfcs/pull/3
-  - https://github.com/openfga/rfcs/pull/4
-  - https://github.com/openfga/api/pull/27
-  - https://github.com/openfga/syntax-transformer/pull/47
+  - <https://github.com/openfga/rfcs/pull/3>
+  - <https://github.com/openfga/rfcs/pull/4>
+  - <https://github.com/openfga/api/pull/27>
+  - <https://github.com/openfga/syntax-transformer/pull/47>
 - **Supersedes**: N/A
 
 ## Summary
@@ -34,7 +34,7 @@ Allow users to indicate in their store's authorization model what types of objec
 
 #### Optimize ListObjects
 
-In order to implement some optimizations to the ListObjects endpoint mentioned [ListObjects RFC](https://github.com/openfga/rfcs/blob/main/20220714-listObjects-api.md), we should be able to traverse the relationship graph in reverse.
+In order to implement some optimizations to the ListObjects endpoint mentioned [ListObjects RFC](https://github.com/openfga/rfcs/blob/main/20220714-listObjects-api.md), we should be able to traverse the relationship graph in reverse. We not only need to understand how objects are related to other objects, but also what type of objects can be related.
 
 #### Improve the Developer Experience
 
@@ -348,7 +348,10 @@ When writing new models in the new syntax, we need to validate:
       "relation-4": { "this": {} },
       "relation-5": { "this": {} },
       "relation-6": { "computedUserset": { "object": "", "relation": "relation-1"} },
-      "relation-7": { "computedUserset": { "object": "", "relation": "relation-1"} }
+      "relation-7": { "computedUserset": { "object": "", "relation": "relation-1"} },
+      "relation-8": { "this": {} },
+      "relation-9": { "this": {} },
+      "relation-10": { "this": {} },
     },
     "metadata": {
       "relations": {
@@ -359,6 +362,9 @@ When writing new models in the new syntax, we need to validate:
         "relation-5": { "directly_related_user_types": [{ "type": "user" }, { "type": "user" }] }, // invalid, duplicate found
         "relation-6": { "directly_related_user_types": [{ "type": "user" }] }, // invalid, relation-6 does not allow direct relationships (no `this` in the relation definition)
         "relation-7": { "directly_related_user_types": [] }, // valid, relation-7 does not allow direct relationships, so no elements are expected
+        "relation-8": { "directly_related_user_types": [{ "type": "group" }], "allow_public": true }, // valid
+        "relation-9": { "directly_related_user_types": [], "allow_public": true }, // invalid, directly_related_user_types does not have any types with no relations
+        "relation-10": { "directly_related_user_types": [{ "type": "group", "relation": "relation-1" }], "allow_public": true }, // invalid, directly_related_user_types does not have any types with no relations
       }
     }
   }
@@ -409,15 +415,15 @@ On write, we need to validate that:
 
 #### Updating ListObjects to Respect Type Restrictions
 
-ListObjects will be the first of the Relationship Query endpoints to take advantage of this new functionality. Our hope is that we can start building a more performant ListObjects endpoint using the new type restrictions.
+[ListObjects](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects) will be the first of the Relationship Query endpoints to take advantage of this new functionality. Our hope is that we can start building a more performant ListObjects endpoint using the new type restrictions.
 
 #### Updating Expand to Respect Type Restrictions
 
-Expand will need to be updated to ignore tuples that do not match the directly related user types in the authorization model.
+Once ListObjects has been implemented and tested, [Expand](https://openfga.dev/api/service#/Relationship%20Queries/Expand) will need to be updated to ignore tuples that do not match the directly related user types in the authorization model.
 
 #### Updating Check to Respect Type Restrictions
 
-This will be the final phase and should be undertaken only once we are completely confident of how ListObjects and Expand are performing with the new functionality. Check is the core of OpenFGA, and we should be diligent in making sure it does not break and that any changes are properly communicated.
+[Check](https://openfga.dev/api/service#/Relationship%20Queries/Check) will be the final phase and should be undertaken only once we are completely confident of how ListObjects and Expand are performing with the new functionality. Check is the core of OpenFGA, and we should be diligent in making sure it does not break and that any changes are properly communicated.
 
 When the time comes, check will be updated to ignore relationship tuples in the database that do not match the directly related user types in the authorization model.
 
@@ -429,7 +435,7 @@ Existing models will not be migrated - new models will be required to use types 
 
 ### Migrating existing tuples
 
-Due to the users in the tuples now required to have types in order to enforce the restrictions, existing tuples with users as floating user identifiers with no types will no longer be valid when types are added. These tuples will not be removed from the system, and will still be valid while the legacy authorization model is supported, but will be ignored during evaluation on newer authorization models with type restrictions in place.
+Due to the users in the tuples now required to have types in order to enforce the restrictions, existing tuples with users as floating user identifiers with no types (e.g. `anne`) will no longer be valid when types are added. These tuples will not be removed from the system, and will still be valid while the legacy authorization model is supported, but will be ignored during evaluation on newer authorization models with type restrictions in place.
 
 This will need to be communicated to developers so that they can migrate accordingly by:
 
@@ -450,11 +456,11 @@ This change will affect repositories across the board. It will entail changes to
 
 For the scope of this RFC, we are proposing that the initial phase be backwards compatible and not a breaking change. This will allow users on previous versions to keep using them during a grace period while keeping changes to the public surface of the API and SDKs to a minimum.
 
-A later RFC can introduce the breaking change where the `directly_related_user_types` array is moved out of the metadata and into the relation definition. That phase can be combined with other breaking changes we are introducing to minimize user-disruption.
+A later RFC can introduce the breaking change where the `directly_related_user_types` array and `allow_public` are moved out of the metadata and into the relation definition. That phase can be combined with other breaking changes we are introducing to minimize user-disruption.
 
 #### DSL
 
-As a lot of developers will now have to include a user type and it may not have any relations on it, an update to the DSL needs to happen to support types with no relations: (completed via openfga/syntax-transformer#47)
+As a lot of developers will now have to include a user type and it may not have any relations on it. An update to the DSL needs to happen to support types with no relations: (completed via openfga/syntax-transformer#47)
 
 ```python
 type user
@@ -469,21 +475,22 @@ Syntax transformer will need to be updated to support both the new JSON syntax a
 
 ### Roadmap
 
-1. This RFC is drafted
-2. The [openfga/api#27](https://github.com/openfga/api/pull/27) PR introduces the new fields into the proto-files
-3. ~~The DSL & [openfga/syntax-transformer](https://github.com/openfga/syntax-transformer) are updated to allow empty user type~~ (completed via openfga/syntax-transformer#47)
-4. [openfga/openfga.dev](https://github.com/openfga/openfga.dev) is updated to use the user type across the board
-5. [openfga/openfga](https://github.com/openfga/openfga)
+1. [This RFC](https://github.com/openfga/rfcs/pull/7) is drafted
+2. The [api protobufs](https://github.com/openfga/api/blob/f10bb663ad633df8c6f7cdcfc7280b959ab47293/openfga/v1/authzmodel.proto#L52) are updated to allow types with no relations
+3. The [openfga/api#27](https://github.com/openfga/api/pull/27) PR introduces the new fields into the proto-files
+4. ~~The DSL & [openfga/syntax-transformer](https://github.com/openfga/syntax-transformer) are updated to allow empty user type~~ (completed via openfga/syntax-transformer#47)
+5. [openfga/openfga.dev](https://github.com/openfga/openfga.dev) is updated to use the user type across the board
+6. [openfga/openfga](https://github.com/openfga/openfga)
    1. Validation is added to prevent writing models with invalid type restrictions (e.g. restricting to a type that does not exist)
    2. Validation is added to prevent writing tuples that do not match the type restrictions
    3. ListObjects implementation is updated to take the type restrictions into consideration
-6. An RFC for the updated DSL that supports type restrictions is drafted
-7. [openfga/syntax-transformer](https://github.com/openfga/syntax-transformer) is updated with support for the new DSL and JSON syntax
-8. Playground is updated with the latest syntax-transformer changes
-9. [openfga/sdk-generator](https://github.com/openfga/sdk-generator) is updated to reflect the changes in the proto files
-10. [openfga/sample-stores](https://github.com/openfga/sample-stores) is updated with the type restrictions
-11. [openfga/openfga.dev](https://github.com/openfga/openfga.dev) is updated to include type restrictions in the documentation
-12. Expand and Check implementations are updated to take the type restrictions into consideration
+7. An RFC for the updated DSL that supports type restrictions is drafted
+8. [openfga/syntax-transformer](https://github.com/openfga/syntax-transformer) is updated with support for the new DSL and JSON syntax
+9. Playground is updated with the latest syntax-transformer changes
+10. [openfga/sdk-generator](https://github.com/openfga/sdk-generator) is updated to reflect the changes in the proto files
+11. [openfga/sample-stores](https://github.com/openfga/sample-stores) is updated with the type restrictions
+12. [openfga/openfga.dev](https://github.com/openfga/openfga.dev) is updated to include type restrictions in the documentation
+13. Expand and Check implementations are updated to take the type restrictions into consideration
 
 ## Drawbacks
 
@@ -538,7 +545,7 @@ For example, consider the following model (in psuedocode). If someone writing th
 ] }
 ```
 
-This alternative would have been our choice had we been optimizing for developer experience instead of for resolving the ExpandedWatch/ListObjects use-case. However, because it does not help us narrow down the address space when traversing the graph in reverse, it was deemed insufficient to meet our needs.
+This alternative would have been our choice had we been optimizing for developer experience instead of for resolving the ReverseExpand/ListObjects use-case. However, because it does not help us narrow down the address space when traversing the graph in reverse, it was deemed insufficient to meet our needs.
 
 ### Add the Directly Related User Types Directly in the Main Relation
 
@@ -556,7 +563,7 @@ It would have been cleaner to introduce the directly related user types into the
 ] }
 ```
 
-However that is a breaking change due to how the relations are currently defined in the [protobuf files](https://github.com/openfga/api/blob/main/openfga/v1/authzmodel.proto#L50) as a map of usersets.
+However that is a breaking change due to how the relations are currently defined in the [protobuf files](https://github.com/openfga/api/blob/f10bb663ad633df8c6f7cdcfc7280b959ab47293/openfga/v1/authzmodel.proto#L50) as a map of usersets.
 
 If we do introduce it, it should probably be bundled with other cleanup and breaking changes at a later point in time.
 
