@@ -407,7 +407,7 @@ On write, we need to validate that:
 3. If the user is `*`:
    - `write(user=*, parent, group:1)`; valid, it will mean all objects that are of type `group` are related to `group:1` as parent. (Note that objects of type `user` or `employee` are not related, because they are not in the `directly_related_user_types` array)
    - `write(user=*, member, group:1)`; valid, it will mean all objects that are of type `user` or `employee` are related to `group:1` as member. (Note that objects of type `group` are not related, because they are not in the `directly_related_user_types` array)
-   - `write(user=*, can_read, group:1)`; invalid, the `can_read` relation on the `group` type does not allow direct relationship tuples (no `this` in the relation definition).
+   - `write(user=*, can_view, group:1)`; invalid, the `can_view` relation on the `group` type does not allow direct relationship tuples (no `this` in the relation definition).
    - `write(user=*, member_reader, group:1)`; invalid, the `member_reader` relation on the `group` type does not reference a specific type `type=group, relation=member`is a reference to a relation on a type and not to a single type.
 
 > Note: Any tuples that are considered invalid on write according to a certain model should also be ignored when evaluating the graph based on that model even if they already exist in the database.
