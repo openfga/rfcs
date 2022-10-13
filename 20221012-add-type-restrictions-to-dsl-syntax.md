@@ -31,7 +31,7 @@ The main reason for this change is to optimize the [ListObjects](https://github.
 
 ### Improve the developer experience
 
-Adding type restrictions may improve the understandablity of authorization models. One may see immediately that certain relations may only have certain types of users. For example, perhaps parents of folder can only be of type folder, or readers of documents can only be of type user.
+Adding type restrictions may improve the understandability of authorization models. One may see immediately that certain relations may only have certain types of users. For example, parents of folders can only be of type folder, or readers of documents can only be of type user.
 
 ## Type restrictions
 
