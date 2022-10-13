@@ -25,13 +25,13 @@ See the [Add Type Restrictions to the JSON Syntax RFC](./20220831-add-type-restr
 
 ## Motivation
 
-### Optimize ListObjects
-
-The main reason for this change is to optimize the [ListObjects](https://github.com/openfga/rfcs/blob/main/20220714-listObjects-api.md) endpoint. ListObjects needs to traverse the permission graph in reverse, and by restricting the types of users that may be related to objects, we are able to reduce the number of edges we must traverse from each node.
-
 ### Improve the developer experience
 
-Adding type restrictions may improve the understandability of authorization models. One may see immediately that certain relations may only have certain types of users. For example, parents of folders can only be of type folder, or readers of documents can only be of type user.
+Adding type restrictions improves the understandability of authorization models. One may see immediately that certain relations may only have certain types of users. For example, parents of folders can only be of type folder, or readers of documents can only be of type user.
+
+### Optimize ListObjects
+
+Type restrictions will allow us to optimize the [ListObjects](https://github.com/openfga/rfcs/blob/main/20220714-listObjects-api.md) endpoint. ListObjects needs to traverse the permission graph in reverse, and by restricting the types of users that may be related to objects, we are able to reduce the number of edges we must traverse from each node.
 
 ## Type restrictions
 
