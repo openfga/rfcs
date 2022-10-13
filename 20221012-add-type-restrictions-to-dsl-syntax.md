@@ -44,7 +44,7 @@ type user
 
 ### Type restrictions
 
-Let A be an authorization model with set of types T and set of relations R. A type restriction on A can be seen as a function from TxR to TxR*, where R* is R with the addition of an "empty" relation. That is, a type restriction takes any (type, relation) in A and takes it to the set of type-relation pairs, with possibly empty relation, that it may be directly related to.
+Let A be an authorization model with set of types T and set of relations R. A type restriction on A can be seen as a set-valued function from TxR to TxR*, where R* is R with the addition of an "empty" relation. That is, a type restriction takes any (type, relation) in A and takes it to the set of type-relation pairs, with possibly empty relation, that it may be directly related to.
 
 #### Examples
 
