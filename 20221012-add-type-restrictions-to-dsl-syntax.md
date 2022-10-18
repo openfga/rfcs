@@ -62,6 +62,8 @@ type t
 ```
 If the type restriction takes (t, r) to the empty set we will simply write nothing in our model.
 
+Notice the the addition of type restrictions means we may drop `self` from the DSL. This is because if a pair (type, relation) has a non-empty set of type restrictions, then the assumption is that (type, relation) is a pair that allows a direct relation to type. This may become clear from the example below.
+
 #### Example
 
 Let's look at a concrete example. Consider the model:
@@ -86,11 +88,13 @@ type employee
 
 type group
     relations
-        define parent: [group] as self
-        define member: [employee, group#member] as self
-        define guest: [user, employee, group#member] as self
+        define parent: [group]
+        define member: [employee, group#member]
+        define guest: [user, employee, group#member]
         define can_view as guest
 ```
+
+Notice that we no longer need `self` to indicate that a relation allows a direct relation.
 
 ## Affect of type restrictions: writing tuples
 
