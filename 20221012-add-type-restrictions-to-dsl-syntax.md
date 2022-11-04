@@ -12,7 +12,7 @@
 
 ## Summary
 
-The DSL syntax is used to specify authorization models. Type restrictions on an authorization model will allow us to restrict the types of users that may be directly related to (type, relation) pairs. For example, we may restrict that the parent of a folder must be a folder itself. In this RFC we are proposing a syntax to add type restrictions to the DSL.
+The DSL syntax is used to specify authorization models. Type restrictions on an authorization model will allow us to restrict the types of users that may be directly related to (type, relation) pairs. For example, we may restrict that the parent of a folder must be a folder itself. In this RFC we are proposing a syntax to add type restrictions to the DSL, and updates related to this.
 
 See the [Add Type Restrictions to the JSON Syntax RFC](./20220831-add-type-restrictions-to-json-syntax.md) for further background.
 
@@ -33,24 +33,25 @@ Adding type restrictions improves the understandability of authorization models.
 
 Type restrictions will allow us to optimize the [ListObjects](https://github.com/openfga/rfcs/blob/main/20220714-listObjects-api.md) endpoint. ListObjects needs to traverse the permission graph in reverse, and by restricting the types of users that may be related to objects, we are able to reduce the number of edges we must traverse from each node.
 
+## Schema version 1.1
+
+Since this is a significate breaking change to the DSL we have decided to add a schema version to the DSL. The previous version of the DSL had schema version 1.0, and the schema version with type restrictions is 1.1. If you wish to use type restrictions in the DSL please add the following to the top of the model:
+
+```
+model
+    schema 1.1
+```
+
 ## Type restrictions
-
-### Types with no relations
-
-It now becomes useful to allow types with no relations. For example, we may want to specify a `user` type which is the type for all concrete users. This will look like
-```
-type user
-```
 
 ### Type restrictions
 
-Let A be an authorization model with set of types T and set of relations R. A type restriction on A can be seen as a set-valued function from TxR to TxR*, where R* is R with the addition of an "empty" relation. That is, a type restriction takes any (type, relation) in A and takes it to the set of type-relation pairs, with possibly empty relation, that it may be directly related to.
+Let A be an authorization model with set of types T and set of relations R. A type restriction on A can be seen as a set-valued function from TxR to TxR*, where R* is R with the addition of an "empty" relation. That is, a type restriction takes any (type, relation) in A and takes it to the set of type-relation pairs (where the relation may be empty) that it may be directly related to. That is, if the pair (folder, viewer) has the type restriction (employee, \_), where "\_" is used to indicate the empty relation, then the only tuples of the form (object=folder:documents, relation=viewer, user=U) that are allowed are ones in which `U=employee:X`, where `X` is an employee id.
 
 #### Examples
 
-1. Suppose A is an authorization model with a type folder and relation parent on folder. We may have a type restriction on A that takes (folder, parent) to the set {(folder, \_)}, meaning that parents of folders must be folders. (The "_" is used to indicate the empty relation.)
+1. Suppose A is an authorization model with a type folder and relation parent on folder. We may have a type restriction on A that takes (folder, parent) to the set {(folder, \_)}, meaning that parents of folders must be folders.
  2. Suppose A is an authorization model with type document and relation reader on document. We may have a type restriction on A that takes (document, reader) to the set {(user, \_), (group, member)}, meaning that the only users that may be readers of a document are users with type user, or a userset of group members.
-
 
 ### Syntax
 
@@ -58,21 +59,42 @@ Let A be an authorization model with set of types T and set of relations R, and 
 ```
 type t
     relations
-        define r: [t1#r1, t2#r2] as ...
+        define r: [t1#r1, t2#r2] ...
 ```
 If the type restriction takes (t, r) to the empty set we will simply write nothing in our model.
 
-Notice the the addition of type restrictions means we may drop `self` from the DSL. This is because if a pair (type, relation) has a non-empty set of type restrictions, then the assumption is that (type, relation) is a pair that allows a direct relation to type. This may become clear from the example below.
+### Types with no relations
 
-#### Example
+It now becomes useful to allow types with no relations. For example, suppose we want to define a `viewer` relation and retrict the typeswe may want to specify a `user` type which is the type for all concrete users. This will look like
+```
+type user
+```
 
-Let's look at a concrete example. Consider the model:
+### The dropping of "self"
+
+Notice that the addition of type restrictions means we may drop `self` from the DSL. This is because if a pair (type, relation) has a non-empty set of type restrictions, then the assumption is that (type, relation) is a pair that allows a direct relation to type. Thus, previously if we defined a relation as
+```
+define viewer as self
+```
+we can now write this as
+```
+define viewer: [user]
+```
+
+The dropping of "self" can be extended to rewrite rules as well. If a rewrite contains `self` then it may be dropped as in the following examples:
+- `define viewer as self or viewer from parent` -> `define viewer: [user] or viewer from parent`
+- `define viewer as self and viewer from parent` -> `define viewer: [user] and viewer from parent`
+- `define viewer as self but not banned` -> `define viewer: [user] but not banned`
+
+## Example
+
+Let's look at an example. Consider the model without type restrictions and with self:
 ```
 type group
     relations
         define parent as self
         define member as self
-        define guest as self
+        define guest as self or member
         define can_view as guest
 ```
 Suppose we want the following restrictions:
@@ -82,6 +104,9 @@ Suppose we want the following restrictions:
 
 We can write the model with these type restriction as
 ```
+model
+    schema 1.1
+
 type user
 
 type employee
@@ -90,11 +115,9 @@ type group
     relations
         define parent: [group]
         define member: [employee, group#member]
-        define guest: [user, employee, group#member]
+        define guest: [user, employee, group#member] or member
         define can_view as guest
 ```
-
-Notice that we no longer need `self` to indicate that a relation allows a direct relation.
 
 ## Affect of type restrictions: writing tuples
 
@@ -107,7 +130,7 @@ Given a model with type restrictions, we can now only write tuples that respect 
 - object=group:X, relation=guest, user=group:Y#member
 
 The following tuples would _not_ be valid:
-- object=group:X, relation=parent, user=frankie       # group parents can only be groups
+- object=group:X, relation=parent, user=frankie       # group parents can only be groups]
 - object=group:X, relation=parent, user=user:frankie  # group parents can only be groups
 - object=group:X, relation=guest, user=group:Y        # group guests can only be group members, and not just groups
 
