@@ -6,11 +6,11 @@ Want to suggest a change to the OpenFGA project? That's great! We follow an RFC 
 
 Check out the PRs below to see and contribute to features the core team and community are currently evaluating. Let us know your feedback with emojis and comments.
 
-| Feature                                                                       |  PR | Status     |
-|:------------------------------------------------------------------------------|----:|:-----------|
-|[Add RFC for ExpandedWatch API](https://github.com/openfga/rfcs/pull/4)        |  #4 | Draft      |
-|[Add type restrictions to DSL Syntax](https://github.com/openfga/rfcs/pull/7)  |  #7 | Approved   |
-|[Add type restrictions to JSON](https://github.com/openfga/rfcs/pull/8)        |  #8 | Draft      |
+| Feature                                                                       |  PR | Status            |
+|:------------------------------------------------------------------------------|----:|:------------------|
+|[Add RFC for ExpandedWatch API](https://github.com/openfga/rfcs/pull/4)        |  #4 | Draft             |
+|[Add type restrictions to DSL Syntax](https://github.com/openfga/rfcs/pull/7)  |  #7 | Open for Comments |
+|[Add type restrictions to JSON](https://github.com/openfga/rfcs/pull/8)        |  #8 | Draft             |
 
 ---
 
