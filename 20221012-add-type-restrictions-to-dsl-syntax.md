@@ -39,7 +39,7 @@ Since this is a significate breaking change to the DSL we have decided to add a 
 
 ```
 model
-    schema 1.1
+  schema 1.1
 ```
 
 ## Type restrictions
@@ -58,8 +58,8 @@ Let A be an authorization model with set of types T and set of relations R. A ty
 Let A be an authorization model with set of types T and set of relations R, and recall that R* is the set R with the addition of an "empty" relation. We will write an element (t, r) of TxR* as t#r. The special case (t, _) is simply written as t. If the type restriction takes (t, r) to a set {(t1, r1), (t2, r2)}, then in our model we will write this as
 ```
 type t
-    relations
-        define r: [t1#r1, t2#r2] ...
+  relations
+    define r: [t1#r1, t2#r2] ...
 ```
 If the type restriction takes (t, r) to the empty set we will simply write nothing in our model.
 
@@ -70,9 +70,9 @@ It now becomes useful to allow types with no relations. For example, suppose we 
 type user
 ```
 
-### The dropping of "self"
+### The dropping of "as" and "self"
 
-Notice that the addition of type restrictions means we may drop `self` from the DSL. This is because if a pair (type, relation) has a non-empty set of type restrictions, then the assumption is that (type, relation) is a pair that allows a direct relation to type. Thus, previously if we defined a relation as
+In the new DSL we will drop "as" and "self". We drop "as" by adding ":" to all relations, even ones with no type restrictions. That is, if previously we had `define editor as owner`, this becomes `define editor: owner`. With the addition of type restrictions means we may also drop `self` from the DSL. This is because if a pair (type, relation) has a non-empty set of type restrictions, then the assumption is that (type, relation) is a pair that allows a direct relation to type. Thus, previously if we defined a relation as
 ```
 define viewer as self
 ```
@@ -81,58 +81,89 @@ we can now write this as
 define viewer: [user]
 ```
 
-The dropping of "self" can be extended to rewrite rules as well. If a rewrite contains `self` then it may be dropped as in the following examples:
+The dropping of "self" will be extended to rewrite rules as well. If a rewrite contains `self` then it may be dropped as in the following examples:
 - `define viewer as self or viewer from parent` -> `define viewer: [user] or viewer from parent`
 - `define viewer as self and viewer from parent` -> `define viewer: [user] and viewer from parent`
 - `define viewer as self but not banned` -> `define viewer: [user] but not banned`
 
-## Example
+### Wildcards
 
-Let's look at an example. Consider the model without type restrictions and with self:
+The syntax and semantics of wildcards have also been updated in the new DSL. Consider the (new) authorization model
 ```
-type group
-    relations
-        define parent as self
-        define member as self
-        define guest as self or member
-        define can_view as guest
-```
-Suppose we want the following restrictions:
-1. parents of groups are groups
-2. members of groups are employees or group members
-3. guests of groups are users, employees, or group members
+type user
 
-We can write the model with these type restriction as
+type document
+  relations
+    define viewer: [user]
 ```
-model
-    schema 1.1
+Previously, writing a tuple with the wildcard symbol `document:X#viewer@*` meant that we intended the object `document:X` to be publically "viewable". In the new DSL, we will also add type restrictions to the wildcard symbol, and there will no longer be an untyped wildcard symbol. If you want to say that a document can be publically viewable for all `user`s, then you must add `user:*` to the type restrictions:
+```
+type user
 
+type document
+  relations
+    define viewer: [user, user:*]
+```
+Then you can write tuples such as `document:X#viewer@user:*`, which means that `document:X` is viewable to all `user`s. If you had another type, say `employee`, then you may instead write something like
+```
 type user
 
 type employee
 
+type document
+  relations
+    define viewer: [user, employee:*]
+```
+which means you could write tuples such as `document:Y#viewer@employee:*`, which means that `document:Y` is viewable to all `employee`s.
+
+## Example
+
+Consider the following authorization model:
+```
 type group
-    relations
-        define parent: [group]
-        define member: [employee, group#member]
-        define guest: [user, employee, group#member] or member
-        define can_view as guest
+  relations
+    define member as self
+
+type document
+  relations
+    define viewer as self
+```
+Suppose we want the following restrictions:
+1. viewer of documents can be users, groups, or members of a group
+1. some documents may be viewable for all users
+1. group members are users
+
+We can write the model with these type restriction as
+```
+model
+  schema 1.1
+
+type user
+
+type group
+  relations
+    define member: [user]
+
+type document
+  relations
+    define viewer: [user, group, group#member, user:*]
 ```
 
 ## Affect of type restrictions: writing tuples
 
 Given a model with type restrictions, we can now only write tuples that respect the type restriction. For example, given our model above the following are valid tuples:
-- object=group:X, relation=parent, user=group:Y
-- object=group:X, relation=member, user=employee:susan
-- object=group:X, relation=member, user=group:Y#member
-- object=group:X, relation=guest, user=user:susan
-- object=group:X, relation=guest, user=employee:mary
-- object=group:X, relation=guest, user=group:Y#member
+- object=group:eng, relation=member, user=user:alice
+- object=document:w, relation=viewer, user=user:beatrix
+- object=document:x, relation=viewer, user=group:eng
+- object=document:y, relation=viewer, user=group:hr#member
+- object=document:z, relation=viewer, user=user:*
 
 The following tuples would _not_ be valid:
-- object=group:X, relation=parent, user=frankie       # group parents can only be groups]
-- object=group:X, relation=parent, user=user:frankie  # group parents can only be groups
-- object=group:X, relation=guest, user=group:Y        # group guests can only be group members, and not just groups
+- object=group:eng, relation=member, user=charlie           # group members must have type user
+- object=group:eng, relation=member, user=group:iam         # group members must have type user
+- object=group:eng, relation=member, user=group:iam#member  # group members must have type user
+- object=document:x, relation=viewer, user=employee:diane   # employee is not a type of (document, viewer)
+- object=document:y, relation=viewer, user=*                # untyped * are no longer allowed
 
 
 ## Further information
