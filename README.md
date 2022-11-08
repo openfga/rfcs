@@ -1,10 +1,20 @@
 # OpenFGA RFCs
 
-Want to suggest a change to the OpenFGA project? That's great!
+Want to suggest a change to the OpenFGA project? That's great! We follow an RFC (Request for Comments) process for substantial changes to the project. An RFC is a way to propose, communicate and coordinate on new efforts for the project. 
 
-We follow an RFC (Request for Comments) process for substantial changes to the project.
+## 👀 Open Requests For Comments
 
-## When the RFC process is necessary
+Check out the PRs below to see and contribute to features the core team and community are currently evaluating. Let us know your feedback with emojis and comments.
+
+| Feature                                                                       |  PR | Status     |
+|:------------------------------------------------------------------------------|----:|:-----------|
+|[Add RFC for ExpandedWatch API](https://github.com/openfga/rfcs/pull/4)        |  #4 | Draft      |
+|[Add type restrictions to DSL Syntax](https://github.com/openfga/rfcs/pull/7)  |  #7 | Approved   |
+|[Add type restrictions to JSON](https://github.com/openfga/rfcs/pull/8)        |  #8 | Draft      |
+
+---
+
+## 💡 When the RFC process is necessary
 
 The RFC process is necessary for changes which have a substantial impact on end users, operators, or contributors. "Substantial" is subjective, but it generally includes:
 
@@ -22,7 +32,9 @@ The RFC process aims to prevent wasted time and effort on substantial changes th
 
 If you're not sure whether to open an RFC for a change you'd like to propose, feel free to ask in our Discord's [#dev channel](#discord-link)!
 
-## RFC Process
+---
+
+## 📋 RFC Process
 
 ### Proposal
 To get a proposal into OpenFGA, an RFC first needs to be merged into the RFC repo. Once an RFC is merged, it's considered 'active' and may be implemented to be included in the project. These steps will get an RFC to be considered:
