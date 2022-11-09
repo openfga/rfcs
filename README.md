@@ -31,7 +31,7 @@ An RFC is not necessary for changes which have narrow scope and don't leave much
 
 The RFC process aims to prevent wasted time and effort on substantial changes that end up being sent back to the drawing board. If your change takes minimal effort, or if you don't mind potentially scrapping it and starting over, feel free to skip this process. Do note however that pull requests may be closed with a polite request to submit an RFC.
 
-If you're not sure whether to open an RFC for a change you'd like to propose, feel free to ask in our Discord's [#dev channel](#discord-link)!
+If you're not sure whether to open an RFC for a change you'd like to propose, feel free to ask in our [Discord's #fga-feedback channel](https://discord.com/invite/8naAwJfWN6)!
 
 ---
 
@@ -53,9 +53,6 @@ To get a proposal into OpenFGA, an RFC first needs to be merged into the RFC rep
 ### Development
 Once a pull request is opened, the RFC is now in development and the following will happen:
 
-1. The following labels will be applied as appropriate:
- * `label1/<sublabel>`
- * `label2/<sublabel>`
 1. The core team will discuss as much as possible in the RFC pull request directly. Any outside discussion will be summarized in the comment thread.
 1. When deemed "ready", a core team member will propose a "motion for final comment period (FCP)" along with a disposition of the outcome (merge, close, or postpone). This is a step taken when enough discussion of the tradeoffs have taken place and the team is in a position to make a decision. Before entering FCP, super majority of the core team must sign off.
 
@@ -70,6 +67,10 @@ When a pull request enters FCP the following will happen:
     
     Non-binding votes are of course welcome. Super majority means 2/3 or greater and no single company can have more than 50% of countable votes.
 1. If no substantial new arguments or ideas are raised, the FCP will follow the outcome decided. If there are substantial new arguments, then the RFC will go back into development.
+1. The following labels will be applied as appropriate:
+ * `resolution/merge`: the proposal will be merged; there are no outstanding objections, and implementation can begin as soon as the RFC is merged.
+ * `resolution/close`: the proposal will be closed.
+ * `resolution/postpone`: resolution will be deferred until a later time when the motivating or blocking factors may have changed.
 
 ### Merge
 Once an RFC has been accepted, the sub-team maintainers should:
