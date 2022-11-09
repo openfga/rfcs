@@ -35,7 +35,7 @@ Type restrictions will allow us to optimize the [ListObjects](https://github.com
 
 ## Schema version 1.1
 
-Since this is a significate breaking change to the DSL we have decided to add a schema version to the DSL. The previous version of the DSL had schema version 1.0, and the schema version with type restrictions is 1.1. If you wish to use type restrictions in the DSL please add the following to the top of the model:
+Since this is a significant breaking change to the DSL we have decided to add a schema version to the DSL. The previous version of the DSL had schema version 1.0, and the schema version with type restrictions is 1.1. If you wish to use type restrictions in the DSL please add the following to the top of the model:
 
 ```
 model
@@ -65,14 +65,14 @@ If the type restriction takes (t, r) to the empty set we will simply write nothi
 
 ### Types with no relations
 
-It now becomes useful to allow types with no relations. For example, suppose we want to define a `viewer` relation and retrict the typeswe may want to specify a `user` type which is the type for all concrete users. This will look like
+It now becomes useful to allow types with no relations. For example, suppose we want to define a `viewer` relation and retrict the types we may want to specify a `user` type which is the type for all concrete users. This will look like
 ```
 type user
 ```
 
 ### The dropping of "as" and "self"
 
-In the new DSL we will drop "as" and "self". We drop "as" by adding ":" to all relations, even ones with no type restrictions. That is, if previously we had `define editor as owner`, this becomes `define editor: owner`. With the addition of type restrictions means we may also drop `self` from the DSL. This is because if a pair (type, relation) has a non-empty set of type restrictions, then the assumption is that (type, relation) is a pair that allows a direct relation to type. Thus, previously if we defined a relation as
+In the new DSL we will drop "as" and "self" keywords. We drop "as" by adding ":" to all relations, even ones with no type restrictions. That is, if previously we had `define editor as owner`, this becomes `define editor: owner`. With the addition of type restrictions means we may also drop `self` from the DSL. This is because if a pair (type, relation) has a non-empty set of type restrictions, then the assumption is that (type, relation) is a pair that allows a direct relation to type. Thus, previously if we defined a relation as
 ```
 define viewer as self
 ```
@@ -104,7 +104,7 @@ type document
   relations
     define viewer: [user, user:*]
 ```
-Then you can write tuples such as `document:X#viewer@user:*`, which means that `document:X` is viewable to all `user`s. If you had another type, say `employee`, then you may instead write something like
+Then you can write tuples such as `document:X#viewer@user:*`, which means that `document:X` is viewable to all `user`s. If you had another type restriction, say `employee`, then you may instead write something like
 ```
 type user
 
@@ -159,9 +159,9 @@ Given a model with type restrictions, we can now only write tuples that respect 
 - object=document:z, relation=viewer, user=user:*
 
 The following tuples would _not_ be valid:
-- object=group:eng, relation=member, user=charlie           # group members must have type user
-- object=group:eng, relation=member, user=group:iam         # group members must have type user
-- object=group:eng, relation=member, user=group:iam#member  # group members must have type user
+- object=group:eng, relation=member, user=charlie           # group members must be related to type user
+- object=group:eng, relation=member, user=group:iam         # group members must be related to type user
+- object=group:eng, relation=member, user=group:iam#member  # group members must be related to type user
 - object=document:x, relation=viewer, user=employee:diane   # employee is not a type of (document, viewer)
 - object=document:y, relation=viewer, user=*                # untyped * are no longer allowed
 
