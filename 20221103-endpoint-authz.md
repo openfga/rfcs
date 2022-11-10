@@ -262,24 +262,118 @@ authn:
 I believe that this approach is too prescriptive; we should leave this in the hands of the operators even if it requires a bit more verbosity in the configuration.
 
 ## Other approaches
-### OpenFGA-driven authorization
-Given that OpenFGA is an authorization system, we could prescribe an authorization model within OpenFGA that models access to the various OpenFGA API operations. Something along the lines of:
+### OpenFGA-drive authorization
+Given that OpenFGA is an authorization system, could we use it to answer the authorization question of "Can this principal take this action on the system?" The key challenge here is forming the question. Can we expose configurations in a way that allow enough flexibility for the operator? An OpenFGA authorization question takes the form:
 ```
-type openfga_api
-  relations
-    define full_access as self
-    define can_create_store as self or full_access
-    define can_write_tuple as self or full_access
-    ...etc
+Check(user, relation, object_type:object_id)
 ```
 
-The OpenFGA authorization code would then make a `Check` call on each request to authorize a client. While dogfooding is appealing at its surface, this approach has some drawbacks:
-- It requires setup outside of just writing a configuration file.
-- It couples the authorization system to other parts of OpenFGA.
-- There is a chicken-and-egg problem; you cannot protect the system prior to starting it up.
-- OpenFGA would be prescribing an authorization model that might not work for the operator
+When a client makes a request to an OpenFGA endpoint we must fill in each of the parameters with a value. The `user` is simple - the API client making the request. This will differ depending on the authentication method, but I don't think that this needs configuration - any given authentication method will have a single subject/principal, so that will be extracted and inserted as the `user` in the authorization check.
 
-I think that the benefits do not outweigh the extra complexity.
+`relation` and `obejct_type:object_id` are trickier, as these depend on the authorization model being used. I think that OpenFGA should avoid prescribing an authorization model. Instead, we can use the configuration to let operators tell the system exactly how to structure the authorization question. As with the simple system, we can allow for simple global authorization combined with fine-grained per-endpoint overrides. For example:
+
+Simple global access. Any subject that has the relation `can_access` on instance `global` of object type `openfga_api` can access any API:
+```yaml
+authz:
+  store_id: aaa-bbb-ccc
+  global:
+    relation: can_access
+    object_type: openfga_api
+    object_id: global
+```
+On any call:
+```
+Check(client-id, can_access, openfga_api:global)
+```
+
+Global access with an override. The relation `can_write` is required to call the `Write` endpoint:
+```yaml
+authz:
+  store_id: aaa-bbb-ccc
+  global:
+    relation: can_access
+    object_type: openfga_api
+    object_id: global
+  endpoints:
+    Write:
+      relation: can_write
+      object_type: openfga_api
+      object_id: global
+```
+On a `Write` call:
+```
+Check(client-id, can_write, openfga_api:global)
+```
+On any other call:
+```
+Check(client-id, can_access, openfga_api:global)
+```
+
+The `object_id` in all of these is `global`. It could be anything, really, as we are not authorizing specific instances of the openfga API. We could extend this system and put that to use - it would be nice to further restrict clients dynamically based on the content of the request:
+- Restrict which clients can take any operation on a given store
+- Restrict which clients can write a given authorization model
+- Restrict which clients can write tuples to a given object
+
+We have the protobuf reference available, so we could reference fields from the `Request` objects in these definitions with special syntax, e.g. `$store_id`:
+```yaml
+authz:
+  store_id: aaa-bbb-ccc
+  global:
+    relation: can_access
+    object_type: openfga_api
+    object_id: global
+  endpoints:
+    Write:
+      relation: can_write
+      object_type: openfga_api_store
+      object_id: $store_id
+```
+During a `Write` request from subject `subject-1` to store `store-1` the authorization code would parse out the store id from the request and make the following `Check`:
+```
+Check(subject-1, can_write, openfga_api_store:store-1)
+```
+
+This is easy enough for simple top-level attributes like `store_id` or `authorization_model_id`, but becomes more challenging if we want to do something like restrict access to write tuples to a particular object type. A `Write` request can contain multiple tuples in the `writes` and `deletes` field, it would be awkward to use a generic syntax in the configuration to reference the `object_type` in the tuples.
+
+There aren't that many attributes to restrict. Instead of a generic syntax that references the protobuf request messages, we could hard-code the attributes on which we allow dynamic authorization restrictions:
+- store_id
+- authorization_model_id
+- object_type
+- contextual_tuple_object_type
+- (maybe more...)
+
+These can be validated in the configuration to ensure that they are only applied to the appropriate endpoints. To preserve the ability to authorize a client on an endpoint globally we can support two object id fields, `static_object_id` and `dynamic_object_id`. For example:
+
+```yaml
+authz:
+  store_id: aaa-bbb-ccc
+  global:
+    relation: can_access
+    object_type: openfga_api
+    object_id: global
+  endpoints:
+    Write:
+      relation: can_write
+      object_type: openfga_api_write
+      static_object_id: global
+      dynamic_object_id: object_type
+```
+
+This configuration has the following properties:
+- On a request to `Write`, at least two `Check` calls are made:
+  - `Check(client-id, can_write, openfga_api_write:global)`.
+    - If this check call succeeds, then the request is authorized.
+  - `Check(client-id, can_write, openfga_api_write:$object_id)` for each distinct `object_id` included in the `Write` request
+    - If _all_ of these check calls succeed, then the request is authorized.
+- On any other request, a single `Check` call is made:
+  - `Check(client-id, can_access, openfga_apoi:global)`
+    - If this check call succeeds, then the request is authorized.
+
+This approach is powerful but has some drawbacks:
+- Multiple `Check` calls to authorize a request could be expensive and slow.
+  - This is controllable by the operator, though, and likely a reasonable tradeoff - it's ok for `Write` and similar calls to be slower. It's unlikely that `Check` would have a complex dynamic authorization scheme
+- It is more complicated to implement and configure.
+- There is a bootstrapping problem - you must manually insert tuples or iteratively change the authorization scheme to allow the first writes.
 
 # Prior Art
 [prior-art]: #prior-art
