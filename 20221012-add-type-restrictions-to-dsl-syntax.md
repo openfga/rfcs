@@ -149,7 +149,7 @@ type document
     define viewer: [user, group, group#member, user:*]
 ```
 
-## Affect of type restrictions: writing tuples
+## Effect of type restrictions: writing tuples
 
 Given a model with type restrictions, we can now only write tuples that respect the type restriction. For example, given our model above the following are valid tuples:
 - object=group:eng, relation=member, user=user:alice
