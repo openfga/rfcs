@@ -5,11 +5,12 @@
 - **Name**: Add Type Restrictions to the JSON Syntax
 - **Start Date**: 2022-08-31
 - **Author(s)**: [rhamzeh](https://github.com/rhamzeh)
-- **Status**: Draft <!-- Acceptable values: Draft, Approved, On Hold, Superseded -->
+- **Status**: Approved
 - **RFC Pull Request**: <https://github.com/openfga/rfcs/pull/7>
 - **Relevant Issues**:
   - <https://github.com/openfga/rfcs/pull/3>
   - <https://github.com/openfga/rfcs/pull/4>
+  - <https://github.com/openfga/rfcs/pull/8>
   - <https://github.com/openfga/api/pull/27>
   - <https://github.com/openfga/syntax-transformer/pull/47>
 - **Supersedes**: N/A
