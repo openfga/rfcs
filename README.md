@@ -6,12 +6,19 @@ Want to suggest a change to the OpenFGA project? That's great! We follow an RFC 
 
 Check out the PRs below to see and contribute to features the core team and community are currently evaluating. Let us know your feedback with emojis and comments.
 
-| Feature                                                                                                                                                             | PR                                             | Status            |
-|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------:|:------------------|
-|[ExpandedWatch API](https://github.com/openfga/rfcs/blob/4fde509fb46c3ed383d8681e4db7292eeb94fe32/20220729-expandedWatch-api.md)                                     | [#4](https://github.com/openfga/rfcs/pull/4)   | Draft             |
-|[Add type restrictions to DSL Syntax](https://github.com/openfga/rfcs/blob/9358259af56895e483a8e613e446f4bedd9abe1e/20221012-add-type-restrictions-to-dsl-syntax.md) | [#7](https://github.com/openfga/rfcs/pull/7)   | Open for Comments |
-|[Add type restrictions to JSON](https://github.com/openfga/rfcs/blob/50948e8330dcc4689f1c8785a460695d2c3b6fab/20220831-add-type-restrictions-to-json-syntax.md)      | [#8](https://github.com/openfga/rfcs/pull/8)   | Draft             |
-|[Endpoint Authorizations](https://github.com/openfga/rfcs/blob/fe5eaeffc2230d162297296d4d3388fe4d065d44/20221103-endpoint-authz.md)                                  | [#10](https://github.com/openfga/rfcs/pull/10) | Open for Comments |
+| Feature                                                                                                                                          | PR                                              | Status            |
+|:-------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------------------------------|:------------------|
+| [ExpandedWatch API](https://github.com/openfga/rfcs/blob/expanded-watch-rfc/20220729-expandedWatch-api.md)                                       | [#4](https://github.com/openfga/rfcs/pull/4)    | Draft             |
+| [Add type restrictions to DSL Syntax](https://github.com/openfga/rfcs/blob/type-restriction-dsl/20221012-add-type-restrictions-to-dsl-syntax.md) | [#7](https://github.com/openfga/rfcs/pull/7)    | Open for Comments |
+| [Endpoint Authorizations](https://github.com/openfga/rfcs/blob/fe5eaeffc2230d162297296d4d3388fe4d065d44/20221103-endpoint-authz.md)              | [#10](https://github.com/openfga/rfcs/pull/10)  | Open for Comments |
+
+---
+
+## ✅ Accepted RFCs
+| Feature                                                                                                                                |   Status |
+|:---------------------------------------------------------------------------------------------------------------------------------------|---------:|
+| [ListObjects API](https://github.com/openfga/rfcs/blob/main/20220714-listObjects-api.md)                                               | Accepted |
+| [Add Type Restrictions to the JSON Syntax](https://github.com/openfga/rfcs/blob/main/20220831-add-type-restrictions-to-json-syntax.md) | Accepted |
 
 ---
 
@@ -84,4 +91,3 @@ Once an `issues-created/<sub-team>` label has been created for each sub-team, th
 1. Update issues with RFC ID and a link to the text file.
 1. Update any links in PR description to point at the committed file.
 1. Remove the "Final Comment Period" label.
-
