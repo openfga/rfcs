@@ -17,7 +17,6 @@ The FGA model currently needs to be defined in a single file. This RFC proposes 
 ## Definitions
 
 - [OpenFGA DSL](https://openfga.dev/docs/configuration-language)
-- [ListObjects Endpoint](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects)
 
 ## Motivation
 
