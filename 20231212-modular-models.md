@@ -2,7 +2,7 @@
 
 ## Meta
 
-- **Name**: Enable defining models in multiple files
+- **Name**: Modular Models
 - **Start Date**: 2023-12-12
 - **Author(s)**: [aaguiarz](https://github.com/aaguiarz)
 - **Status**: Draft <!-- Acceptable values: Draft, Approved, On Hold, Superseded -->
@@ -20,7 +20,7 @@ The FGA model currently needs to be defined in a single file. This RFC proposes 
 
 ## Motivation
 
-### Enable multiple teams collaborate on the same conceptual model
+### Enable model composition and collaboration across multiple teams
 
 Authorization logic is application/service specific. In companies with multiple teams building multiple components, each team should own the authorization logic for their domain.
 
@@ -34,7 +34,7 @@ Having all teams to maintain a model in a single file has several drawbacks:
 
 In addition to enable different developers maintain their own modules, it should be possible to enable different applications to perform different actions in different modules. 
 
-For example, the application that owns a module should be able to write/delete tuples from the store, but other applications could only be able to query it.
+For example, applications belonging to the domain which owns a module should be able to write/delete tuples of the object types the module defines, but other applications outside of that domain should only be able to query relationships of those object types.
 
 This functionality is not part of this RFC, but it could be built on top of it.
 
