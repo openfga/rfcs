@@ -19,7 +19,7 @@ The `ListUsers` and `StreamedListUsers` will provide an API that answers the que
 
 > Who are all the users that have a relationship with an object?
 
-More specifically, given an [object](https://openfga.dev/docs/concepts#what-is-an-object) and [relation](https://openfga.dev/docs/concepts#what-is-a-relation), these APIs will return all of the [user](https://openfga.dev/docs/concepts#what-is-a-user) objects of a particular type that have that [relationship](https://openfga.dev/docs/concepts#what-is-a-relationship).
+More specifically, given an [object](https://openfga.dev/docs/concepts#what-is-an-object) and [relation](https://openfga.dev/docs/concepts#what-is-a-relation), these APIs will return all of the concrete/terminal [user](https://openfga.dev/docs/concepts#what-is-a-user) objects of a particular type that have that [relationship](https://openfga.dev/docs/concepts#what-is-a-relationship).
 
 
 # Definitions
