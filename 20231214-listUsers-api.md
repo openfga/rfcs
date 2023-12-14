@@ -1,0 +1,261 @@
+# Meta
+[meta]: #meta
+- Name: ListUsers and StreamedListUsers APIs
+- Start Date: 2023-12-14
+- Author(s): @jon-whit
+- Status: Draft <!-- Acceptable values: Draft, Approved, On Hold, Superseded -->
+- RFC Pull Request: (leave blank)
+- Relevant Issues:
+  - https://github.com/openfga/roadmap/issues/16 (main roadmap issue)
+  - https://github.com/openfga/openfga/issues/406
+  - https://github.com/openfga/openfga/issues/1215
+
+- Supersedes: N/A
+
+# Summary
+[summary]: #summary
+
+The `ListUsers` and `StreamedListUsers` will provide an API that answers the question
+
+> Who are all the users that have a relationship with an object?
+
+More specifically, given an [object](https://openfga.dev/docs/concepts#what-is-an-object) and [relation](https://openfga.dev/docs/concepts#what-is-a-relation), these APIs will return all of the [user](https://openfga.dev/docs/concepts#what-is-a-user) objects of a particular type that have that [relationship](https://openfga.dev/docs/concepts#what-is-a-relationship).
+
+
+# Definitions
+[definitions]: #definitions
+
+* You may see references to strings formatted as **`object#relation@user`** in this document. This is short-hand notation for representing an OpenFGA Relationship Tuple. For example, `group:eng#member@user:jon` or `document:1#viewer@group:eng#member` etc..
+
+* **Expansion** - refers to the process of iteratively traversing the graph of relationships that are realized through both an OpenFGA model AND the relationship tuples that exist in the store.
+
+* **Forward expansion** - refers to expansion of the OpenFGA relationship graph in a forward form. That is, starting at an object and relation, walk the graph of relationships in a directed way towards a user of some specific type by following paths that would lead through some target relation.
+
+* **Reverse expansion** - refers to expansion of the OpenFGA relationship grpah in a backwards form. That is, starting at a user of a specific type, walk the graph of relationships in a directed way towards an object of some specific type by following paths that would lead through some target relation.
+
+* **Concrete/terminal objects** - a concrete or terminal object refers to a singular or specific resource of a given object type and id. A concrete object cannot be expanded any further (see Expansion above). It can be conceptualized as a leaf-node in a graph. Concrete objects differ from usersets, because usersets refer to a collection of zero or more concrete objects. For example `user:jon` is a concrete object while `group:eng#member` is a userset which may expand to multiple concrete objects such as `user:jon`, `user:andres`, etc..
+
+* **Userset** - A userset refers to a set of zero or more concrete objects that are the subjects that a relationship expands to. See our Concepts page on [Users](https://openfga.dev/docs/concepts#what-is-a-user) for more info.
+
+
+# Motivation
+[motivation]: #motivation
+
+- Why should we do this?
+
+Developers using OpenFGA want to be able to do a reverse query and lookup all of the users that have a particular relationship with an object. 
+
+- What use cases does it support?
+
+**UIs** - display the users that a resource has been shared with. Think of the "Share" dialog in Google Docs, for example.
+
+**todo: fill out more**
+
+
+- What is the expected outcome?
+
+Two new core APIs are added to the [OpenFGA API](https://github.com/openfga/api) and implementations of these new APIs in the [OpenFGA server](https://github.com/openfga/openfga).
+
+# What it is
+[what-it-is]: #what-it-is
+
+Given an `object`, `relation`, some `user_object_type` and optional `user_relation`, return the terminal set of user objects of the target `user_object_type` and optional `user_relation` that have that relationship with the object.
+
+More formally, given the following model and relationship tuples:
+
+```
+model
+  schema 1.1
+
+type user
+type cat
+
+type group
+  relations
+    define member: [user, group#member]
+
+type document
+  relations
+    define viewer: [cat, user, group#member]
+```
+
+| object     | relation | user             | condition_name | context |
+|------------|----------|------------------|----------------|---------|
+| document:1 | viewer   | user:anne        | null           | null    |
+| document:1 | viewer   | group:eng#member | null           | null    |
+| group:eng  | member   | group:fga#member | null           | null    |
+| group:fga  | member   | user:jon         | null           | null    |
+
+ListUsers and StreamedListUsers would behave as follows:
+
+> ℹ️ For the sake of brevity the examples below focus on the ListUsers unary RPC variant. The difference with the StreamedListUsers API is the streaming semantics of the response. Instead of returning an array, the streaming variant returns each result one at a time as they are "discovered".
+
+**Example 1**
+`user` object types are both directly and indirectly related to `document#viewer` relationships. The indirect relationships come through the direct relationships involving `group#member` (e.g. users can directly view a document or if the user is part of a group that can view the document)
+```
+ListUsers({
+    object: "document:1",
+    relation: "viewer",
+    user_object_type: "user"
+}) --> ["user:anne", "user:jon"]
+```
+
+**Example 2**
+Looking at the type restrictions defined in the model, `group` objects are not directly related whatsoever to `document#viewer` relationships. So this example returns no results.
+```
+ListUsers({
+    object: "document:1",
+    relation: "viewer",
+    user_object_type: "group"
+}) --> []
+```
+
+**Example 3**
+You can see in the model that `group#member` relationships are directly related to `document#viewer`. So this example returns the `group:eng#member` direct relationship and the `group:fga#member` relationship indirectly through `group:eng#member`.
+```
+ListUsers({
+    object: "document:1",
+    relation: "viewer",
+    user_object_type: "group",
+    user_relation: "member"
+}) --> ["group:eng", "group:fga"]
+```
+
+## API Semantics
+Unless otherwise noted, the intent is for the ListUsers and StreamedListUsers APIs to behave similarly with the ListObjects and StreamedListObjects API. This is to encourage more uniformity in the API experience. The API and server configuration should reflect similarities, the error propagation strategy should strive to be the same, and any limits and/or deadline behaviors should strive to be identical unless there is a compelling reason to have an exception. We may find such compelling reasons as we dig into the implementation details further, but it's not obvious why/if it would have to differ at this time.
+
+## API and Server Configuration Changes
+- Introduce the new protobuf API definitions.
+
+  > ℹ️ The various protobuf annotations have been omitted for brevity, but assume they are identical to those existing annotations for the same or similar fields used in other endpoints.
+  
+    - **ListUsers**
+    
+    ```protobuf
+    rpc ListUsers(ListUsersRequest) returns (ListUsersResponse)
+    
+    message ListUsersRequest {
+        string store_id = 1;
+        string authorization_model_id = 2;
+        string object = 3;
+        string relation = 4;
+        string user_object_type = 5;
+        string user_relation = 6;
+        repeated TupleKey contextual_tuples = 7;
+        google.protobuf.Struct context = 8;
+    }
+    
+    // ListUsersResponse represents a unary response with
+    // all user result(s) up to the maximum limit.
+    message ListUsersResponse {
+      repeated string users = 1; // e.g. document:1
+    }
+    ```
+    
+    - **StreamedListUsers**
+    
+    ```go
+    rpc StreamedListUsers(StreamedListUsersRequest) returns (stream StreamedListUsersResponse)
+    
+    message StreamedListUsersRequest {
+        string store_id = 1;
+        string authorization_model_id = 2;
+        string object = 3;
+        string relation = 4;
+        string user_object_type = 5;
+        string user_relation = 6;
+        repeated TupleKey contextual_tuples = 7;
+        google.protobuf.Struct context = 8;
+    }
+    
+    // StreamedListUsersResponse represents a single streaming user result 
+    // returned from the streaming endpoint.
+    message StreamedListUsersResponse {        
+      string user = 1; // e.g. document:1
+    }
+    ```
+    
+- New server configurations (flags/config/env):
+
+  - `--listUsers-max-results (uint32)` - limits the maximum size of the results returned by ListUsers (if 0 all results are returned up to the deadline, otherwise the response is limited to this size)
+
+  - `--listUsers-deadline (duration)` - the timeout deadline for serving ListUsers or StreamedListUsers requests (default 3s)
+
+  - `--max-concurrent-reads-for-list-objects (uint32)` - the maximum allowed number of concurrent datastore reads in a single ListUsers or StreamedListUsers query
+
+### Limits and Deadlines
+The `ListUsers` API is a [unary RPC](https://grpc.io/docs/what-is-grpc/core-concepts/#unary-rpc) while the `StreamedListUsers` is a [server-streaming RPC](https://grpc.io/docs/what-is-grpc/core-concepts/#server-streaming-rpc). Because of these semantic differences we have different behaviors around limits and deadlines. 
+
+The server flag `--listUsers-deadline` (mentioned above) sets an overall upper limit on the amount of time (e.g. the deadline) for serving a `ListUsers` or `StreamedListUsers` request. It controls how long time can be spent expanding results (e.g. finding relationships in the graph). If there are very few results and the deadline is generous, then the request will respond earlier than the deadline period. However, if there are many results and returning all of them would take longer then the deadline, then only the subset that can be returned in the deadline period are returned.
+
+The server flag `--listUsers-max-results` (mentioned above) will limit the size of the set of results return from the unary `ListUsers` endpoint. It sets a hard upper limit on how many results can be returned. If the actual result set is less than this limit then the subset *should* be promptly returned so as to avoid keeping the client waiting longer than necessary. If the actual result set is at least as large as the max results limit but the results haven't been computed before the `--listUsers-deadline` period, then only the results which have been computed up to that deadline will be returned.
+
+### Error Handling
+### Typed Public Wildcard
+Consider this model:
+
+```go
+type user
+
+type document
+  relations
+    define viewer: [user:*]
+```
+
+If a relationship tuple involves a typed public wildcard (e.g. `document:1#viewer@user:*`), then how should we treat that in the `ListUsers`` response? The client *may* want to choose how to treat public wildcards and the server *should* respect that.
+
+For example, one client may want `user:*` to expand to every concrete object of type `user` in the system at the time the query is being served. This would imply doing some sort of `SELECT DISTINCT object_id FROM tuple WHERE object_type="user" AND relation=""` query to resolve all concrete objects that `user:*` expands to. A use case for this approach would be an index process using the this API to build a changeset caused by a changelog entry. Alternatively, some clients may just want to take the public wildcard at face value and treat it as a broad “everyone” policy, and so in this case simply returning the public wildcard in the ListUsers response would suffice. Some use cases may also want to omit public wildcard expansion altogether and only expand relationships without public wildcards. Any of these options could be desirable depending on the use case behind the API.
+
+# How it Works
+[how-it-works]: #how-it-works
+
+This is the technical portion of the RFC, where you explain the design in sufficient detail.
+
+The section should return to the examples given in the previous section, and explain more fully how the detailed proposal makes those examples work.
+
+## Algorithm
+
+`ListUsers` is a filtered form of recursive [Expand](https://openfga.dev/api/service#/Relationship%20Queries/Expand). We don’t want to return *all users of any type*, we only want to return all the concrete user objects *of a specified type*.
+
+The implementation of ListUsers and StreamedListUsers will behave a lot like [ListObjects](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects) and [StreamedListObjects](https://openfga.dev/api/service#/Relationship%20Queries/StreamedListObjects), but instead of starting at a user and expanding backwards (e.g. reverse expansion) we will start at a relationship with an object and recursively expand (forward expansion) any usersets we find along the way that would lead to a concrete/terminal object of the specified `user_object_type`.
+
+
+> ℹ️ Most of the implementation details we spent time tuning with `ListObjects` apply to this problem as well. Namely, bounding the number of concurrent evaluation paths, bounding the number of concurrent database queries that can be inflight per request, constraining the response results and/or the streaming deadline, etc.. We should be able to move more quickly on the implementation phase as a result of the prior work and education from ListObjects.
+
+Here’s are a few examples to demonstrate the algorithm:
+
+# Migration
+[migration]: #migration
+
+* No migrations or API breaking changes should be necessary for this work. We're extending the API surface, not changing it.
+
+# Drawbacks
+[drawbacks]: #drawbacks
+
+* Increases API surface to maintain
+
+* Another costly graph traversal query - when we added ListObjects and StreamedListObjects we had to work through some reliability improvements to ensure these new APIs didn't exhaust the database connection pool. These same considerations will be very relevant to this work as well.
+
+# Alternatives
+[alternatives]: #alternatives
+
+- Encourage clients to implement Expand recursively themselves
+
+There’s nothing stopping clients from implementing ListUsers today using the existing `Expand` API, and we won’t necessarily discourage it even after we implement ListUsers. However, we want to build ListUsers to provide this API more natively in the API offering and thus reduce duplication across the community and the burden on the client. We want to provide developers in the community with a simple to use API that doesn’t require reimplementing this logic anywhere it is needed. I anticipate the community will build API endpoints providing recursive Expand for this use case, and so we may as well offer it natively in the API.
+- Call Check for every user in the system for the given `object` and `relation`
+
+This is *an option*, but it is not one that is conducive to performance and/or handling more queries at scale. If many OpenFGA clients used Check for this pattern, then the server would have to be scaled up pretty high during more normal operation to account for this burst load. Additionally, it is also more challenging for a client to orchestrate this many Checks since we do not have a BatchCheck mechanism at this time.
+
+# Prior Art
+[prior-art]: #prior-art
+
+The following code implements a POC implementation of `ListUsers`. The code is not quite complete when it comes to intersection and exclusion or the typed wildcard behavior described above, but it demonstrates the main algorithmic composition. Intersection and exclusion support will behave similarly to how intersection and exclusion behave in ListObjects. That is, a set of users that are contained under an intersection or exclusion will require additional Checks to resolve the set intersection or exclusion directly. 
+
+https://github.com/jon-whit/openfga/blob/168986a51aae8281499aeb1b643d818621b70a07/pkg/server/commands/listusers/list_users_rpc.go
+
+# Unresolved Questions
+[unresolved-questions]: #unresolved-questions
+
+- What parts of the design do you expect to be resolved before this gets merged?
+- What parts of the design do you expect to be resolved through implementation of the feature?
+- What related issues do you consider out of scope for this RFC that could be addressed in the future independently of the solution that comes out of this RFC?
