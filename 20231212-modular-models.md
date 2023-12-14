@@ -113,7 +113,7 @@ type group
 module confluence
 import "core.fga"
 
-extend type base.organization
+extend type core.organization
   relations
     define can_create_space : [core.user] or admin
     
