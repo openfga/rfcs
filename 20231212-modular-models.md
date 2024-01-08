@@ -47,9 +47,11 @@ If Atlassian implemented authorization using OpenFGA they would have a set of co
 ```
 type user
 type organization
+  relations
    define member : [user]
    define admin : [user]
 type group
+  relations
     define member : [user]
 ```    
 
