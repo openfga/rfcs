@@ -59,7 +59,7 @@ Two new core APIs are added to the [OpenFGA API](https://github.com/openfga/api)
 # What it is
 [what-it-is]: #what-it-is
 
-Given an `object`, `relation`, some `user_object_type` and optional `user_relation`, return the terminal set of user objects of the target `user_object_type` and optional `user_relation` that have that relationship with the object.
+Given an `object`, `relation`, some `user_object_type` and optional `user_relation`, return the concrete/terminal set of user objects of the target `user_object_type` and optional `user_relation` that have that relationship with the object.
 
 More formally, given the following model and relationship tuples:
 
@@ -202,20 +202,16 @@ type document
     define viewer: [user:*]
 ```
 
-If a relationship tuple involves a typed public wildcard (e.g. `document:1#viewer@user:*`), then how should we treat that in the `ListUsers`` response? The client *may* want to choose how to treat public wildcards and the server *should* respect that.
+If a relationship tuple involves a typed public wildcard (e.g. `document:1#viewer@user:*`), then how should we treat that in the `ListUsers` response? The client *may* want to choose how to treat public wildcards and the server *should* respect that.
 
 For example, one client may want `user:*` to expand to every concrete object of type `user` in the system at the time the query is being served. This would imply doing some sort of `SELECT DISTINCT object_id FROM tuple WHERE object_type="user" AND relation=""` query to resolve all concrete objects that `user:*` expands to. A use case for this approach would be an index process using the this API to build a changeset caused by a changelog entry. Alternatively, some clients may just want to take the public wildcard at face value and treat it as a broad “everyone” policy, and so in this case simply returning the public wildcard in the ListUsers response would suffice. Some use cases may also want to omit public wildcard expansion altogether and only expand relationships without public wildcards. Any of these options could be desirable depending on the use case behind the API.
 
 # How it Works
 [how-it-works]: #how-it-works
 
-This is the technical portion of the RFC, where you explain the design in sufficient detail.
-
-The section should return to the examples given in the previous section, and explain more fully how the detailed proposal makes those examples work.
-
 ## Algorithm
 
-`ListUsers` is a filtered form of recursive [Expand](https://openfga.dev/api/service#/Relationship%20Queries/Expand). We don’t want to return *all users of any type*, we only want to return all the concrete user objects *of a specified type*.
+`ListUsers` and `StreamedListUsers` is a filtered form of recursive [Expand](https://openfga.dev/api/service#/Relationship%20Queries/Expand). We don’t want to return *all users of any type*, we only want to return all the concrete user objects *of a specified type*.
 
 The implementation of ListUsers and StreamedListUsers will behave a lot like [ListObjects](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects) and [StreamedListObjects](https://openfga.dev/api/service#/Relationship%20Queries/StreamedListObjects), but instead of starting at a user and expanding backwards (e.g. reverse expansion) we will start at a relationship with an object and recursively expand (forward expansion) any usersets we find along the way that would lead to a concrete/terminal object of the specified `user_object_type`.
 
@@ -223,6 +219,133 @@ The implementation of ListUsers and StreamedListUsers will behave a lot like [Li
 > ℹ️ Most of the implementation details we spent time tuning with `ListObjects` apply to this problem as well. Namely, bounding the number of concurrent evaluation paths, bounding the number of concurrent database queries that can be inflight per request, constraining the response results and/or the streaming deadline, etc.. We should be able to move more quickly on the implementation phase as a result of the prior work and education from ListObjects.
 
 Here’s are a few examples to demonstrate the algorithm:
+
+### Example 1a (Direct Relation with Object)
+```
+model
+  schema 1.1
+
+type user
+
+type document
+  relations
+    define viewer: [user]
+```
+
+| object     | relation | user        |
+|------------|----------|-------------|
+| document:1 | viewer   | user:jon    |
+| document:1 | viewer   | user:andres |
+
+
+```
+ListUsers({
+  object: "document:1",
+  relation: "viewer",
+  user_object_type: "user"
+}) --> ["user:jon", "user:andres"]
+```
+In this case the algorithm simply must expand all direct relationships between `document:1#viewer` and `user` objects. Since these are directly related to one another, then we must only do a simple database lookup which equates to `SELECT user_object_id FROM tuple WHERE object_type="document" AND object_id="1" AND relation="viewer" AND user_object_type="user"`
+
+### Example 1b (Direct Relation with Userset)
+```
+model
+  schema 1.1
+
+type user
+
+type group
+  relations
+    define member: [user, group#member]
+
+type document
+  relations
+    define viewer: [group#member]
+```
+| object         | relation | user                  |
+|----------------|----------|-----------------------|
+| document:1     | viewer   | group:eng#member      |
+| group:eng      | member   | group:fga#member      |
+| group:fga      | member   | user:andres           |
+| group:fga      | member   | group:fga-core#member |
+| group:fga-core | member   | user:jon              |
+
+```
+ListUsers({
+  object: "document:1",
+  relation: "viewer",
+  user_object_type: "user"
+}) --> ["user:jon"]
+```
+This example requires recursive expansion.
+> ℹ️ The usage of `expand` from here forward refers to an internal expand function, and it should not be confused with the public Expand API, but it operates somewhat similarly.
+
+
+1. Expand the set of subjects/users that relate to `document:1#viewer`. 
+
+   `expand(document:1#viewer)` --> ["group:eng#member"]
+
+1. Expand the new set of subjects/users that make up `group:eng#member` set.
+
+   `expand(group:eng#member)` --> ["group:fga#member"]
+
+1. Expand the set of subjects/users that make up the `group:fga#member` set.
+
+   `expand(group:fga#member)` --> ["user:andres", "group:fga-core#member"]
+
+   1. We find a terminal/concrete object of `user:andres`, which is of the target user_object_type, and so we add it to the list of items to include in the response.
+
+1. Continue expanding the residual set of subjects/users in `group:fga-core#member`
+
+   `expand(group:fga-core#member)` --> ["user:jon"]
+
+   1. We find a terminal/concrete object of `user:jon`, which is of the target user_object_type, so add it to the list of items to include in the response
+
+1. No further subjects to expand, and so we're done. Return the items we accumulated from the steps above.
+
+Visually, the overall recursive call tree looks like the following:
+
+```
+expand(document:1#viewer) --> ["group:eng#member"]
+|-> expand(group:eng#member) --> ["group:fga#member"]
+|---> expand(group:fga#member) --> ["user:andres", "group:fga-core#member"]
+|-----> expand(group:fga-core#member) --> ["user:jon"]
+
+return ["user:andres", "user:jon"]
+```
+
+
+### Example 1c (Direct Relation with Typed Public Wildcard)
+```
+model
+  schema 1.1
+
+type user
+
+type document
+  relations
+    define viewer: [user:*]
+```
+
+### Example 2 (Computed Relationship)
+```
+model
+  schema 1.1
+
+type user
+
+type document
+  relations
+    define editor: [user]
+    define viewer: editor
+```
+
+### Example 3 (TTU Relationship)
+
+### Intersection and Exclusion
+For relationships that involve an intersection (e.g. `a and b`) or exclusion (e.g. `a but not b`) we'll apply the same algorithmic approach we do in ListObjects. Namely, given the set `a and b` we'll compute `a` and then call `Check` for each of the results to resolve the set intersection through Check resolution. Likewise, for `a but not b` we'll compute `a` and then call `Check` for each of the results to resolve the set difference.
+
+This choice is an algorithmic choice that exploits the fact that `a and b` and `a but not b` can be no larger than the `max(size(a), size(b))`, so instead of computing the results for both sets, holding the results temporarily in memory and then resolving the overlap, we simply compute the first set and then use Check resolution to resolve the residual.
 
 # Migration
 [migration]: #migration
