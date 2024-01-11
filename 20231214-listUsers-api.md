@@ -333,11 +333,46 @@ model
   schema 1.1
 
 type user
+type person
 
 type document
   relations
-    define editor: [user]
+    define editor: [user, person]
     define viewer: editor
+```
+| object     | relation | user       |
+|------------|----------|------------|
+| document:1 | editor   | user:jon   |
+| document:1 | editor   | person:bob |
+
+```
+ListUsers({
+  object: "document:1",
+  relation: "viewer",
+  user_object_type: "user"
+}) --> ["user:jon"]
+```
+This example demonstrates a simple rewritten relation involved in the expansion. Instead of expanding `document:1#viewer` we immediately rewrite that to `document:1#editor` and expand that. Namely,
+
+1. Rewrite document#viewer to document#editor through computed_userset.
+
+   `expand(document:1#viewer)` --rewritten--> `expand(document:1#editor)`
+
+1. Expand the new (rewritten) relationship.
+
+   `expand(document:1#editor)` --> ["user:jon", "person:bob"]
+
+   1. We findterminal/concrete objects including `user:jon` and `person:bob`. `user:jon` is of the target user_object_type, so add it to the list of items to include in the response, but we filter out/omit `person:bob`.
+
+1. No further subjects to expand, and so we're done. Return the items we accumulated from the steps above.
+
+Visually, the overall recursive call tree looks like the following:
+```
+expand(document:1#viewer) (rewritten)
+|-> expand(document:1#editor) --> ["user:jon", "person:bob"]
+    filter(["user:jon", "person:bob"])
+
+return ["user:jon"]
 ```
 
 ### Example 3 (TTU Relationship)
