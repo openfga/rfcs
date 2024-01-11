@@ -382,6 +382,57 @@ For relationships that involve an intersection (e.g. `a and b`) or exclusion (e.
 
 This choice is an algorithmic choice that exploits the fact that `a and b` and `a but not b` can be no larger than the `max(size(a), size(b))`, so instead of computing the results for both sets, holding the results temporarily in memory and then resolving the overlap, we simply compute the first set and then use Check resolution to resolve the residual.
 
+## Concurrency Control
+Similar to the mitigations we've implemented in Check and ListObjects, a single ListUsers subproblem could fan-out to hundreds or more of repetitive expansions. Consequently, we must limit the breadth of the number of expansions that can be dispatched at any level as well as limit the total depth of expansion. 
+
+For widely nested sets of relationship, consider the following model and relationship tuples:
+
+```
+model
+  schema 1.1
+
+type user
+
+type group
+  relations
+    define member: [user, group#member]
+```
+| object  | relation | user           |
+|---------|----------|----------------|
+| group:1 | member   | group:2#member |
+| group:1 | member   | group:3#member |
+| group:1 | member   | ...            |
+| group:1 | member   | group:N#member |
+| group:N | member   | user:jon       |
+
+If a developer were to call 
+```
+ListUsers({
+  object: "group:1",
+  relation: "member",
+  user_object_type: "user"
+})
+```
+then, for large `N`, this would cause a high degree of expansive breadth and saturate the server CPU and memory.
+
+Similarly, for recursively expanding deeply nested sets, consider the same model above but the following tuples:
+| object  | relation | user           |
+|---------|----------|----------------|
+| group:1 | member   | group:2#member |
+| group:2 | member   | group:3#member |
+| ...     | member   | ...            |
+| group:N | member   | user:jon       |
+
+If a deveoper were to call
+```
+ListUsers({
+  object: "group:1",
+  relation: "member",
+  user_object_type: "user"
+})
+```
+then, for large `N`, this would cause a high degree of depth and saturate the server CPU and memory.
+
 # Migration
 [migration]: #migration
 
