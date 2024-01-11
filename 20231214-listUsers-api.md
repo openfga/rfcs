@@ -309,7 +309,9 @@ Visually, the overall recursive call tree looks like the following:
 expand(document:1#viewer) --> ["group:eng#member"]
 |-> expand(group:eng#member) --> ["group:fga#member"]
 |---> expand(group:fga#member) --> ["user:andres", "group:fga-core#member"]
+      yield "user:andres"
 |-----> expand(group:fga-core#member) --> ["user:jon"]
+        yield "user:jon"
 
 return ["user:andres", "user:jon"]
 ```
@@ -362,7 +364,7 @@ This example demonstrates a simple rewritten relation involved in the expansion.
 
    `expand(document:1#editor)` --> ["user:jon", "person:bob"]
 
-   1. We findterminal/concrete objects including `user:jon` and `person:bob`. `user:jon` is of the target user_object_type, so add it to the list of items to include in the response, but we filter out/omit `person:bob`.
+   1. We find terminal/concrete objects including `user:jon` and `person:bob`. `user:jon` is of the target user_object_type, so add it to the list of items to include in the response, but we filter out/omit `person:bob`.
 
 1. No further subjects to expand, and so we're done. Return the items we accumulated from the steps above.
 
@@ -371,11 +373,72 @@ Visually, the overall recursive call tree looks like the following:
 expand(document:1#viewer) (rewritten)
 |-> expand(document:1#editor) --> ["user:jon", "person:bob"]
     filter(["user:jon", "person:bob"])
+    yield "user:jon"
 
 return ["user:jon"]
 ```
 
 ### Example 3 (TTU Relationship)
+
+### Example 4 (Expanding Relationships With `objectType#relation`)
+
+```
+model
+  schema 1.1
+
+type user
+
+type group
+  relations
+    define member: [user]
+
+type document
+  relations
+    define viewer: [group#member]
+```
+| object     | relation | user             |
+|------------|----------|------------------|
+| document:1 | viewer   | group:eng#member |
+| group:eng  | member   | group:fga#member |
+```
+ListUsers({
+  object: "document:1",
+  relation: "viewer",
+  user_object_type: "group"
+  user_relation: "member"
+}) --> ["group:eng", "group:fga"]
+```
+This example deviates from many of the examples above in that we expand all relationships for a specific object and relation (e.g. `document:1#viewer`) that are related to a given set of users or subject set (e.g. `group#member`).
+
+1. Expand the set of subjects/users that relate to `document:1#viewer`.
+
+   `expand(document:1#viewer)` --> ["group:eng#member"]
+
+   1. We find terminal/concrete object `group:eng#member`, which is of the target user_object_type (group) and user_relation (member), so add it to the list of items in the response.
+
+1. Expand the set of subjects/users that relate to `group:eng#member`.
+
+   `expand(group:eng#member)` --> ["group:fga#member"]
+
+    1. We find terminal/concrete object `group:fga#member`, which is of the target user_object_type (group) and user_relation (member), so add it to the list of items in the response.
+
+1. Expand the set of subjects/users that relate to `group:fga#member`.
+
+   `expand(group:fga#member)` --> []
+
+1. No further subjects to expand, and so we're done. Return the items we accumulated from the steps above.
+
+Visually, the overall recursive call tree looks like the following:
+```
+expand(document:1#viewer) --> ["group:eng#member"]
+yield group:eng
+|-> expand(group:eng#member) --> ["group:fga#member"]
+    yield group:fga
+|---> expand(group:fga#member) --> []
+
+return ["group:eng", "group:fga"]
+```
+
 
 ### Intersection and Exclusion
 For relationships that involve an intersection (e.g. `a and b`) or exclusion (e.g. `a but not b`) we'll apply the same algorithmic approach we do in ListObjects. Namely, given the set `a and b` we'll compute `a` and then call `Check` for each of the results to resolve the set intersection through Check resolution. Likewise, for `a but not b` we'll compute `a` and then call `Check` for each of the results to resolve the set difference.
@@ -432,6 +495,45 @@ ListUsers({
 })
 ```
 then, for large `N`, this would cause a high degree of depth and saturate the server CPU and memory.
+
+## Pruning/Directing Expansion with Graph Edges
+> ℹ️ Failure to prune expansion could lead to more excessive server exhaustion and be a reliability and performance concern.
+
+A naive implementation would blindly expand subject/user sets without using any of the type restriction information included in the model (e.g. neglecting concrete edges in the graph). A more optimized approach to the iterative expansion algorithm described above would use the type restriction information to prune the expansion space. For example, consider the following model and relationship tuples:
+
+```
+model
+  schema 1.1
+
+type person
+type user
+
+type group
+  relations
+    define member: [person, group#member]
+
+type document
+  relations
+    define viewer: [group#member]
+```
+
+| object     | relation | user           |
+|------------|----------|----------------|
+| document:1 | viewer   | group:1#member |
+| document:1 | viewer   | group:2#member |
+| document:1 | viewer   | ...            |
+| document:1 | viewer   | group:N#member |
+| group:N    | member   | person:bob     |
+
+If a developer were to call
+```
+ListUsers({
+  object: "document:1",
+  relation: "viewer",
+  user_object_type: "user"
+})
+```
+then a naive implementation would start expanding all `group#member` relationships only to find that `user` objects aren't related to any group members. This is because the type restrictions would not allow such relationships to exist in the first place. In this case, if `N` is large, this is a server concern. Consequently, we should avoiding expanding edges that would not lead to a terminal object that is the desired user_object_type. We can do so by using the relationship edges information we have available in the OpenFGA typesystem.
 
 # Migration
 [migration]: #migration
