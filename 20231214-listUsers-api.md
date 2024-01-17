@@ -191,8 +191,10 @@ The server flag `--listUsers-deadline` (mentioned above) sets an overall upper l
 The server flag `--listUsers-max-results` (mentioned above) will limit the size of the set of results return from the unary `ListUsers` endpoint. It sets a hard upper limit on how many results can be returned. If the actual result set is less than this limit then the subset *should* be promptly returned so as to avoid keeping the client waiting longer than necessary. If the actual result set is at least as large as the max results limit but the results haven't been computed before the `--listUsers-deadline` period, then only the results which have been computed up to that deadline will be returned.
 
 ### Error Handling
+
+
 ### Typed Public Wildcard
-Consider this model:
+Nothing special is required when handling typed wildcards. Namely, consider this model, tuples, and request:
 
 ```go
 type user
@@ -202,9 +204,18 @@ type document
     define viewer: [user:*]
 ```
 
-If a relationship tuple involves a typed public wildcard (e.g. `document:1#viewer@user:*`), then how should we treat that in the `ListUsers` response? The client *may* want to choose how to treat public wildcards and the server *should* respect that.
+| object     | relation | user        |
+|------------|----------|-------------|
+| document:1 | viewer   | user:*      |
 
-For example, one client may want `user:*` to expand to every concrete object of type `user` in the system at the time the query is being served. This would imply doing some sort of `SELECT DISTINCT object_id FROM tuple WHERE object_type="user" AND relation=""` query to resolve all concrete objects that `user:*` expands to. A use case for this approach would be an index process using the this API to build a changeset caused by a changelog entry. Alternatively, some clients may just want to take the public wildcard at face value and treat it as a broad “everyone” policy, and so in this case simply returning the public wildcard in the ListUsers response would suffice. Some use cases may also want to omit public wildcard expansion altogether and only expand relationships without public wildcards. Any of these options could be desirable depending on the use case behind the API.
+```
+ListUsers({
+  object: "document:1",
+  relation: "viewer",
+  user_object_type: "user"
+}) --> ["user:*"]
+```
+In this example there is a single tuple establishing a typed wildcard of type `user` with `document:1#viewer`, and while expanding the ListUsers request we yield the typed wildcard directly because it matches the desired `user_object_type`.
 
 # How it Works
 [how-it-works]: #how-it-works
