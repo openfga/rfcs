@@ -191,7 +191,7 @@ The server flag `--listUsers-deadline` (mentioned above) sets an overall upper l
 The server flag `--listUsers-max-results` (mentioned above) will limit the size of the set of results return from the unary `ListUsers` endpoint. It sets a hard upper limit on how many results can be returned. If the actual result set is less than this limit then the subset *should* be promptly returned so as to avoid keeping the client waiting longer than necessary. If the actual result set is at least as large as the max results limit but the results haven't been computed before the `--listUsers-deadline` period, then only the results which have been computed up to that deadline will be returned.
 
 ### Error Handling
-
+ListUsers and StreamedListUsers should strive to implement error handling semantics inline with the way ListObjects and StreamedListObjects do. Namely, the API  should strive to fulfill the request with its limits as much as possible. For the unary ListUsers endpoint, if and only if it cannot fulfill the requested `--listUsers-max-results` and at least one error occurred, then an error should be surfaced. For the StreamedListUsers endpoint, as errors are encountered they should be yielded over the stream.
 
 ### Typed Public Wildcard
 Nothing special is required when handling typed wildcards. Namely, consider this model, tuples, and request:
