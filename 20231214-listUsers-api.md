@@ -830,6 +830,8 @@ https://github.com/jon-whit/openfga/blob/168986a51aae8281499aeb1b643d818621b70a0
 
   - Should a tuple such as `document:1#viewer@user:*` cause a result to be included in the response if the filter is `user_filter: [{type: "user"}]` or should we require explicit passing of `user_filter: [{type: "user", wildcard: {}}]`? Or should this be behavior that is configurable *per request* (e.g. a query parameter/input of the request itself)?
 
+  - Should we include the `resolved_paths` field in each response in the initial implementation, or should we postpone that? It is necessary to efficiently address the Google Doc Share Dialog scenario described in [Example 5](#example-5-google-docs-share-dialog). We just need to decide if that is in scope of the initial work.
+
 - What parts of the design do you expect to be resolved through implementation of the feature?
 
   - The implementation should take into account dispatch composition. Any further expansion of a given ListUsers subproblem should be composed through a uniform loopback function call mechanism. This will allow for subproblem resolution to be dispatched over a network interface at a later time if we so choose.
