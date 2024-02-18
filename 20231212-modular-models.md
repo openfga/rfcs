@@ -4,8 +4,9 @@
 
 - **Name**: Modular Models
 - **Start Date**: 2023-12-12
+- **Last Updated Date**: 2024-02-18
 - **Author(s)**: [aaguiarz](https://github.com/aaguiarz)
-- **Status**: Draft <!-- Acceptable values: Draft, Approved, On Hold, Superseded -->
+- **Status**: Draft 
 - **PR Link**: https://github.com/openfga/rfcs/pull/14/files
 - **Relevant Issues**:
 - **Supersedes**: N/A
@@ -28,7 +29,6 @@ Having all teams to maintain a model in a single file has several drawbacks:
 
   - Requires a more comprehensive PR process where all teams need to be involved.
   - The model can become large and difficult to understand.
-  - It's likely that the authorization model can't be part of the same repository as the code that uses it.
 
 ### Enable different applications to perform different actions in different modules
 
@@ -36,11 +36,11 @@ In addition to enable different developers maintain their own modules, it should
 
 For example, applications belonging to the domain which owns a module should be able to write/delete tuples of the object types the module defines, but other applications outside of that domain should only be able to query relationships of those object types.
 
-This functionality is not part of this RFC, but it could be built on top of it.
+This functionality is not part of this RFC, but the solution we implement should enable this functionality in the future.
 
 ## Use Cases
 
-To illustrate the use cases, we’ll use Atlassian as an example. Atlassian has several products. A couple of well known ones are Confluence (a wiki) and Jira (project management).
+To illustrate the use cases, we’ll use Atlassian as an example. Atlassian has several products, including Confluence (a wiki) and Jira (a project management tool).
 
 If Atlassian implemented authorization using OpenFGA they would have a set of core types that every application needs to be aware of, like:
 
@@ -67,7 +67,7 @@ type page
     define owner : [user]
 ```
 
-And the `Jira` team would define their own model too:
+And the `Jira` team would define a model for their resources:
 
 ```
 type project
@@ -83,20 +83,32 @@ To enable this scenario, we'd need to:
 
 - Define a modules with a set of types that reflect the resources/permissions for an app/service.
 - Be able to reference types in other modules.
-- Be able to add relationships to types in other modules. This is something that might not be needed and will be discussed later.
+
+Additionally, we'd need to be able to extend types from other modules to add relations to them. For example, the `Confluence` team would need to add a `can_create_space` relation to the `organization` type to allow users to create spaces.
 
 ## New DSL Constructs Needed
 
 To enable the use cases defined above, we need:
 
-- A way to name a module
-- A way to import a module 
-- A way to reference a type/relation from another model
-- A way to add relations to types from another model
+- A way to name a module.
+- A way to reference a type/relation from another module.
+- A way to add relations to types from another module.
+- A way to compose multiple modules in a single model.
 
-## Proposed Syntax
+## Proposed Solution
 
-Below there's an example of how the models would look like with the proposed syntax.
+When using Modular Models, developers will need to create a `fga.mod` file that will list all modules that are part of the model, for example:
+
+```yaml
+# fga.mod
+schema: 1.2
+contents:
+  - core.fga
+  - jira/model.fga
+  - confluence/model.fga
+```
+
+Each module will define its own types, and have the ability to extend types in other modules:
 
 `core.fga`
 ```
@@ -113,119 +125,129 @@ type group
 `confluence.fga`
 ```
 module confluence
-import "core.fga"
 
-extend type core.organization
+extend type organization
   relations
-    define can_create_space : [core.user] or admin
+    define can_create_space : user or admin
     
 type space
   relations
-    define organization : [core.organization] 
+    define organization : organization
     
 type page
   relations
     define space : [space]
-    define owner : [core.user]
+    define owner : [user]
 ```
 
 `jira.fga`
 ```
 module jira
-import "core.fga"
 
-extend type core.organization
+extend type organization
   relations
-    define can_create_project : [core.user] or admin
+    define can_create_project : user or admin
 
 type project
   relations
-    define organization : [core.organization] 
+    define organization : [organization] 
     
 type ticket
   relations
     define project : [project]
-    define owner : [core.user]
+    define owner : [user]
 ```
 
-## Proposed Implementation
+The `fga.mod` file will be used to generate a single model file by the CLI that can be used by the FGA server.
 
-The simplest way to implement this is to do it at the language + CLI level. 
-
-For example, with the models above, the CLI will combine the files and generate a model like the one below:
-
-`model.fga`
-```
-type core.user
-type core.organization
-   define member : [core.user]
-   define admin : [core.user]
-   define can_create_space : [core.user] or admin
-   define can_create_project : [core.user] or admin
-
-type core.group
-    define member : [core.user]
-    
-type confluence.space
-  relations
-    define organization : [core.organization] 
-    
-type confluence.page
-  relations
-    define space : [confluence.space]
-    define owner : [core.user]
-
-type jira.project
-  relations
-    define organization : [core.organization] 
-    
-type jira.ticket
-  relations
-    define project : [jira.project]
-    define owner : [core.user]
+```shell
+fga model write --file ./fga.mod
 ```
 
-This implies check/write operations need to use the fully qualified type names. 
+Below is the model that would be stored in the FGA store:
 
-For example, to check if the user `anne` user is the owner of the `engineering` space, the check would be:
+```python
+model
+  schema 1.2
 
-`check` (
-  `user`: `"core.user:anne"`, 
-  `relation`: `"owner"`, 
-  `object` : `"confluence.space:engineering"`)
-
-## Handling default modules
-
-The DSL will still support defining types without a module, e.g.
-
-```
 type user
+
 type organization
    define member : [user]
    define admin : [user]
-```
+   define can_create_space :  user or admin
+   define can_create_project : user or admin
 
-If you want to reference these types from another module, you can use the `default` module name, which would be a protected keyword that can't be used to name your own modules.
+type group
+    define member : [user]
 
-```
+type project
+  relations
+    define organization : [organization] 
+    
+type ticket
+  relations
+    define project : [project]
+    define owner : [user]
+
 type space
   relations
-    define organization : [default.organization] 
+    define organization : organization
+    
+type page
+  relations
+    define space : [space]
+    define owner : [user]
 ```
 
-This enables introducing modules in scenarios where you already have a production model that you can't easily change without impacting existing applications, as if you add existing types to a module, the types will be renamed to include the module name.
+Module information will be stored in the JSON representation of the model as metadata. Using that information it should be possible to reconstruct each module, and use module information for authorization decision in the future (e.g. certain applications can only write tuples to certain modules).
 
-## Open Questions
+## Managing Modules in Github
 
-- Should we allow adding relations to types from other modules? 
+To enable collaboration across multiple teams, the `.github/CODEOWNERS` file in the repository can be used to define which team owns which module. Members of that team will need to approve PRs that change the module.
 
-It's common that for each resource type, you need to add a relation in a higher level to allow creating instances of that resource. For example, to know if a user can create a Project in Jira, you'd have a `can_create_project` permission in the `organization` type.
+```
+fga.mod @atlassian/core
+core.fga @atlassian/core
+jira/model.fga @atlassian/jira
+confluence/model.fga @atlassian/confluence
+```
 
-In the examples above, we exemplified a way where the relation can be added in the Jira module using the `extend type base.organization` syntax.
+## High Level Implementation Details
 
-The alternative is to have the relation added to the `core` module directly. However, if we want to optimize for having each application team operate independently, enabling each team to add relations.
+- The Language will be upgraded to support the `module` and `extends` keywords.
+- The CLI will be upgraded to support the new `fga.mod` 
+- The VS Code Extension will be upgraded to support the new `fga.mod` files and the new language constructs.
+- The JSON model format will be upgraded to include module information as metadata for types and relations.
 
-- Is it feasible to implement Modules at the CLI level without any modification to the JSON format and the server? This implies the server won't know what a Module is, and can be problematic if we want to add permission-per-module in the future. We'll need to infer module names from the type names.
+The OpenFGA server does not need to be changed, beyond supporting the new JSON format. SDKs do not need to be changed.
 
-- Should we bump the schema version to 1.2 if we introduce this change? It's not a breaking change, so we don't **need** to version it. 
+## Other options evaluated
 
+### Prefixing types with the module name
+
+We considered prefixing type names with module names (e.g. "confluence.space"). We decided against because:
+
+- Refactoring a model in different modules would be a very impactful change. Changing type names implies changing application code and tuples.
+
+- Existing types are not namespaced, which implies that every developer adopting modules will need to change their application and tuples.
+
+If developers want to namespace their types, they can do it without changes by using namespaced type names (e.g. `confluence.space`).
+
+### Importing Modules
+
+Instead of having a `fga.mod` file, we could have a way to import other modules, and use the CLI to specify all modules needed to create a model, e.g.
+
+`fga model write --file ./core.fga --file ./jira/model.fga --file ./confluence/model.fga`
+
+We decided to not to because:
+
+  - It would make VS Code tooling more complex. To find a type definition for validation/coloring we'd need to incrementally traverse all `import` clauses. 
+
+  - Having a `fga.mod` helps clearly identify which modules are part of the model instead of relying on a CLI command executed at build time.
+
+### Schema Version
+
+We decided to bump the schema to 1.2 to signal that the model was built using the new modular model feature. 
+
+The Playground not will not be updated immediately to support modular models, and it will use the schema version to determine if it can display the model.
