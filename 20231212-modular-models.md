@@ -116,10 +116,12 @@ module core
 
 type user
 type organization
-   define member : [user]
-   define admin : [user]
+   relations
+      define member : [user]
+      define admin : [user]
 type group
-    define member : [user]
+   relations
+      define member : [user]
 ```
 
 `confluence.fga`
@@ -173,12 +175,14 @@ model
 type user
 
 type organization
-   define member : [user]
-   define admin : [user]
-   define can_create_space :  user or admin
-   define can_create_project : user or admin
+  relations
+    define member : [user]
+    define admin : [user]
+    define can_create_space :  user or admin
+    define can_create_project : user or admin
 
 type group
+  relations
     define member : [user]
 
 type project
