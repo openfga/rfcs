@@ -224,7 +224,7 @@ confluence/model.fga @atlassian/confluence
 - The VS Code Extension will be upgraded to support the new `fga.mod` files and the new language constructs.
 - The JSON model format will be upgraded to include module information as metadata for types and relations.
 
-The OpenFGA server does not need to be changed, beyond supporting the new JSON format. SDKs do not need to be changed.
+The OpenFGA server does not need to be changed, beyond supporting the new JSON format and allowing schema version `1.2`. SDKs do not need to be changed beyond being refreshed to allow for the new Authorization Model type with the additional fields.
 
 ## Other options evaluated
 
