@@ -38,7 +38,7 @@ An RFC is not necessary for changes which have narrow scope and don't leave much
 
 The RFC process aims to prevent wasted time and effort on substantial changes that end up being sent back to the drawing board. If your change takes minimal effort, or if you don't mind potentially scrapping it and starting over, feel free to skip this process. Do note however that pull requests may be closed with a polite request to submit an RFC.
 
-If you're not sure whether to open an RFC for a change you'd like to propose, feel free to ask in our [Discord's #fga-feedback channel](https://discord.com/invite/8naAwJfWN6)!
+If you're not sure whether to open an RFC for a change you'd like to propose, feel free to reach out through our [community channels](https://openfga.dev/community).
 
 ---
 
