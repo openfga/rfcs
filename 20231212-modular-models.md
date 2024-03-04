@@ -13,7 +13,7 @@
 
 ## Summary
 
-The FGA model currently needs to be defined in a single file. This RFC proposes a way to define the model in multiple files that can be combined into a single model when writing it to a FGA store.
+The FGA model currently needs to be defined in a single file. This RFC proposes a way to define the model in multiple files called modules that can be combined into a single model when writing it to a FGA store.
 
 ## Definitions
 
@@ -55,7 +55,7 @@ type group
     define member : [user]
 ```    
 
-Then, the `Confluence` team could define a model for their own resources:
+Then, the `Confluence` team could define a separate module for their own resources:
 
 ```
 type space
@@ -67,7 +67,7 @@ type page
     define owner : [user]
 ```
 
-And the `Jira` team would define a model for their resources:
+And the `Jira` team would define a separate module for their resources:
 
 ```
 type project
@@ -81,7 +81,7 @@ type ticket
 
 To enable this scenario, we'd need to:
 
-- Define a modules with a set of types that reflect the resources/permissions for an app/service.
+- Define modules with a set of types that reflect the resources/permissions for an app/service.
 - Be able to reference types in other modules.
 
 Additionally, we'd need to be able to extend types from other modules to add relations to them. For example, the `Confluence` team would need to add a `can_create_space` relation to the `organization` type to allow users to create spaces.
@@ -93,7 +93,7 @@ To enable the use cases defined above, we need:
 - A way to name a module.
 - A way to reference a type/relation from another module.
 - A way to add relations to types from another module.
-- A way to compose multiple modules in a single model.
+- A way to compile multiple modules into a single model.
 
 ## Proposed Solution
 
@@ -103,14 +103,14 @@ When using Modular Models, developers will need to create a `fga.mod` file that 
 # fga.mod
 schema: 1.2
 contents:
-  - core.fga
-  - jira/model.fga
-  - confluence/model.fga
+  - core.module.fga
+  - jira.module.fga
+  - confluence.module.fga
 ```
 
 Each module will define its own types, and have the ability to extend types in other modules:
 
-`core.fga`
+`core.module.fga`
 ```
 module core
 
@@ -124,7 +124,7 @@ type group
       define member : [user]
 ```
 
-`confluence.fga`
+`confluence.module.fga`
 ```
 module confluence
 
@@ -142,7 +142,7 @@ type page
     define owner : [user]
 ```
 
-`jira.fga`
+`jira.module.fga`
 ```
 module jira
 
@@ -212,9 +212,9 @@ To enable collaboration across multiple teams, the `.github/CODEOWNERS` file in 
 
 ```
 fga.mod @atlassian/core
-core.fga @atlassian/core
-jira/model.fga @atlassian/jira
-confluence/model.fga @atlassian/confluence
+core.module.fga @atlassian/core
+jira.model.fga @atlassian/jira
+confluence.model.fga @atlassian/confluence
 ```
 
 ## High Level Implementation Details
@@ -242,7 +242,7 @@ If developers want to namespace their types, they can do it without changes by u
 
 Instead of having a `fga.mod` file, we could have a way to import other modules, and use the CLI to specify all modules needed to create a model, e.g.
 
-`fga model write --file ./core.fga --file ./jira/model.fga --file ./confluence/model.fga`
+`fga model write --file ./core.module.fga --file ./jira.module.fga --file ./confluence.module.fga`
 
 We decided to not to because:
 
