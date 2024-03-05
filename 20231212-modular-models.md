@@ -107,6 +107,7 @@ contents:
   - jira.module.fga
   - confluence.module.fga
 ```
+> **Note**: Adding `module` in the file name can help create a more readable naming convention by describing what content is in the file, but it is not required to compose modular models. `jira.module.fga`, `jira-module.fga`, and `jira.fga` will all work as long as the `.fga` file extension is used.
 
 Each module will define its own types, and have the ability to extend types in other modules:
 
