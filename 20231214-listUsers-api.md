@@ -1,16 +1,16 @@
 # Meta
 [meta]: #meta
-- Name: ListUsers and StreamedListUsers APIs
-- Start Date: 2023-12-14
-- Author(s): @jon-whit, @willvedd, @miparnisari
-- Status: Approved <!-- Acceptable values: Draft, Approved, On Hold, Superseded -->
-- RFC Pull Request: https://github.com/openfga/rfcs/pull/15
-- Relevant Issues:
+- **Name:** ListUsers and StreamedListUsers APIs
+- **Start Date:** 2023-12-14
+- **Authors**: @jon-whit, @willvedd, @miparnisari
+- **Status:** Approved <!-- Acceptable values: Draft, Approved, On Hold, Superseded -->
+- **RFC Pull Request:** https://github.com/openfga/rfcs/pull/15
+- **Relevant Issues:**
   - https://github.com/openfga/roadmap/issues/16 (main roadmap issue)
   - https://github.com/openfga/openfga/issues/406
   - https://github.com/openfga/openfga/issues/1215
 
-- Supersedes: N/A
+- **Supersedes:** N/A
 
 ## Table of Contents 
 - [Summary](#summary)
@@ -57,7 +57,7 @@ More specifically, given an [object](https://openfga.dev/docs/concepts#what-is-a
 ## Motivation
 [motivation]: #motivation
 
-Developers using OpenFGA want to look up all of the users that have a particular relationship with an object. 
+Developers using OpenFGA want to look up all of the users that have a particular relationship with an object. Currently, the Read API is inadequate for listing users because it can only display users who have direct access to an object but not with users that have derived access through expansion.
 
 ### Use Cases
 
@@ -122,7 +122,7 @@ Looking at the type restrictions defined in the model, `group` objects are not d
 ListUsers({
     object: "document:1",
     relation: "viewer",
-    user_filter: [{type: "group"}]
+    user_filters: [{type: "group"}]
 }) --> {
   users: [],
   wildcard_types: []
@@ -135,7 +135,7 @@ You can see in the model that `group#member` relationships are directly related 
 ListUsers({
     object: "document:1",
     relation: "viewer",
-    user_filter: [
+    user_filters: [
       {
         type: "group",
         relation: "member"
@@ -143,7 +143,7 @@ ListUsers({
     ]
 }) --> 
 {
-  users: ["group:eng", "group:fga"]
+  users: ["group:eng#member", "group:fga#member"]
   wildcard_types: []
 }
 ```
@@ -166,7 +166,7 @@ Unless otherwise noted, the intent is for the `ListUsers` and `StreamedListUsers
         string authorization_model_id = 2;
         string object = 3;
         string relation = 4;
-        repeated RelationReference user_filter = 5;
+        repeated RelationReference user_filters = 5;
         repeated TupleKey contextual_tuples = 6;
         google.protobuf.Struct context = 7;
     }
@@ -174,11 +174,12 @@ Unless otherwise noted, the intent is for the `ListUsers` and `StreamedListUsers
     // ListUsersResponse represents a unary response with
     // all user result(s) up to the maximum limit.
     message ListUsersResponse {
-      repeated string users = 1; // e.g. document:1
+      repeated string users = 1; // e.g. ["user:1"]
+      repeated string wildcard_types = 2; // e.g. ["user"]
     }
     ```
     
-    The `user_filter` defines an array of [RelationReference](https://github.com/openfga/api/blob/c491fa728f66c961fd17f5d7dfd491be197b343e/openfga/v1/authzmodel.proto#L90) (e.g. type restriction definitions) that will be used to control the expansion. As ListUsers expansion occurs, if we find a user/subject that meets one of the user_filter type restriction(s), then we include the result in the response and stop further expansion on that subproblem. Once we've found a result meeting the filter criteria we don't explore that subproblem any further, even if it would lead to more results matching the other filters in the `user_filter` (see Example 5 below for further details).
+    The `user_filters` defines an array of [RelationReference](https://github.com/openfga/api/blob/c491fa728f66c961fd17f5d7dfd491be197b343e/openfga/v1/authzmodel.proto#L90) (e.g. type restriction definitions) that will be used to control the expansion. As ListUsers expansion occurs, if we find a user/subject that meets one of the user_filters type restriction(s), then we include the result in the response and stop further expansion on that subproblem. Once we've found a result meeting the filter criteria we don't explore that subproblem any further, even if it would lead to more results matching the other filters in the `user_filters` (see Example 5 below for further details).
 
     - **StreamedListUsers**
     
@@ -190,7 +191,7 @@ Unless otherwise noted, the intent is for the `ListUsers` and `StreamedListUsers
         string authorization_model_id = 2;
         string object = 3;
         string relation = 4;
-        repeated RelationReference user_filter = 5;
+        repeated RelationReference user_filters = 5;
         repeated TupleKey contextual_tuples = 6;
         google.protobuf.Struct context = 7;
     }
@@ -198,7 +199,8 @@ Unless otherwise noted, the intent is for the `ListUsers` and `StreamedListUsers
     // StreamedListUsersResponse represents a single streaming user result 
     // returned from the streaming endpoint.
     message StreamedListUsersResponse {        
-      string user = 1; // e.g. document:1
+      string user = 1; // e.g. "user:1"
+      string wildcard_type = 2; // e.g. "user"
     }
     ```
     
@@ -244,7 +246,7 @@ type document
 ListUsers({
   object: "document:1",
   relation: "viewer",
-  user_filter: [
+  user_filters: [
     {
       type: "user",
     }
@@ -254,7 +256,7 @@ ListUsers({
   users: [],
 }
 ```
-In example 1, there are two tuples establishing a typed wildcard, one for `user` and `employee`, both with `document:1#viewer`. But while expanding the ListUsers request we only return the `user` type in the `wildcard_types` property because it is the only tuple that matches the filters in the `user_filter`.
+In example 1, there are two tuples establishing a typed wildcard, one for `user` and `employee`, both with `document:1#viewer`. But while expanding the ListUsers request we only return the `user` type in the `wildcard_types` property because it is the only tuple that matches the filters in the `user_filters`.
 
 
 **Example 2:**
@@ -263,7 +265,7 @@ In example 1, there are two tuples establishing a typed wildcard, one for `user`
 ListUsers({
   object: "document:1",
   relation: "viewer",
-  user_filter: [
+  user_filters: [
     {
       type: "user",
     }
@@ -276,7 +278,7 @@ ListUsers({
   users: [],
 }
 ```
-However, in example 2, both `user` and `employee` typed wildcard are returned because those user types were specified in the `user_filter` input field.
+However, in example 2, both `user` and `employee` typed wildcard are returned because those user types were specified in the `user_filters` input field.
 
 ## How it Works
 [how-it-works]: #how-it-works
@@ -314,7 +316,7 @@ type document
 ListUsers({
   object: "document:1",
   relation: "viewer",
-  user_filter: [{type: "user"}]
+  user_filters: [{type: "user"}]
 }) --> {
   users: ["user:jon", "user:andres"],
   wildcard_types: []
@@ -349,7 +351,7 @@ type document
 ListUsers({
   object: "document:1",
   relation: "viewer",
-  user_filter: [{type: "user"}]
+  user_filters: [{type: "user"}]
 }) --> ["user:jon", "user:andres"]
 ```
 This example requires recursive expansion.
@@ -412,14 +414,14 @@ type document
 ListUsers({
   object: "document:1",
   relation: "viewer",
-  user_filter: [
+  user_filters: [
     {
       type: "user"
     }
   ]
 }) --> {
-  users: ["user"],
-  wildcard_types: []
+  users: [],
+  wildcard_types: ["user"]
 }
 ```
 
@@ -462,7 +464,7 @@ type document
 ListUsers({
   object: "document:1",
   relation: "viewer",
-  user_filter: [{type: "user"}]
+  user_filters: [{type: "user"}]
 }) --> {
   users: ["user:jon"],
   wildcard_types: []
@@ -514,7 +516,7 @@ type document
 ListUsers({
   object: "document:1",
   relation: "viewer",
-  user_filter: [{type: "user"}]
+  user_filters: [{type: "user"}]
 })  --> {
   users: ["user:jon"],
   wildcard_types: []
@@ -552,7 +554,7 @@ return ["user:jon"]
 ### Example 4 (Expanding Relationships With `objectType#relation`)
 This example is a unique one in that it demonstrates a corner case to the algorithm. In the [API and Server Configuration Changes](#api-and-server-configuration-changes) section earlier we said the following:
 
-> As ListUsers expansion occurs, if we find a user/subject that meets one of the `user_filter`` type restriction(s), then we include the result in the response and <u>stop further expansion on that subproblem</u>.
+> As ListUsers expansion occurs, if we find a user/subject that meets one of the `user_filters`` type restriction(s), then we include the result in the response and <u>stop further expansion on that subproblem</u>.
 
 This examples demonstrates one corner case where we must continue expansion, but only if the subproblem would potentially expand to the same target type and relation of that which was found. 
 
@@ -580,7 +582,7 @@ type document
 ListUsers({
   object: "document:1",
   relation: "viewer",
-  user_filter: [
+  user_filters: [
     {
       type: "group",
       relation: "member"
@@ -655,7 +657,7 @@ If a developer were to call
 ListUsers({
   object: "group:1",
   relation: "member",
-  user_filter: [{type: "user"}]
+  user_filters: [{type: "user"}]
 })
 ```
 then, for large `N`, this would cause a high degree of expansive breadth and saturate the server CPU and memory.
@@ -673,7 +675,7 @@ If a developer were to call
 ListUsers({
   object: "group:1",
   relation: "member",
-  user_filter: [{type: "user"}]
+  user_filters: [{type: "user"}]
 })
 ```
 then, for large `N`, this would cause a high degree of depth and saturate the server CPU and memory.
@@ -712,10 +714,10 @@ If a developer were to call
 ListUsers({
   object: "document:1",
   relation: "viewer",
-  user_filter: [{type: "user"}]
+  user_filters: [{type: "user"}]
 })
 ```
-then a naive implementation would start expanding all `group#member` relationships only to find that `user` objects aren't related to any group members. This is because the type restrictions would not allow such relationships to exist in the first place. In this case, if `N` is large, this is a server concern. Consequently, we should avoiding expanding edges that would not lead to a terminal object that matches one of the targets in the provided `user_filter` list. We can do so by using the relationship edges information we have available in the OpenFGA typesystem.
+then a naive implementation would start expanding all `group#member` relationships only to find that `user` objects aren't related to any group members. This is because the type restrictions would not allow such relationships to exist in the first place. In this case, if `N` is large, this is a server concern. Consequently, we should avoiding expanding edges that would not lead to a terminal object that matches one of the targets in the provided `user_filters` list. We can do so by using the relationship edges information we have available in the OpenFGA typesystem.
 
 ## Out of Scope
 
@@ -770,7 +772,7 @@ To render the "People with access" section we'd make the following query:
 ListUsers({
   object: "document:example",
   relation: "viewer",
-  user_filter: [
+  user_filters: [
     {
       type: "user"
     },
@@ -823,7 +825,7 @@ ListUsers({
 ```
 Two things are important to point out about this response:
 
-1. We didn't return `user:will` twice, because once we find the group `group:engineering#member`, which this user is apart of, we stop expanding that group because it matches one of the provided `user_filter` inputs, namely the `group#member` filter. So in this case for this user we only return the computed relation that stems from the `document:example#editor` resolution path.
+1. We didn't return `user:will` twice, because once we find the group `group:engineering#member`, which this user is apart of, we stop expanding that group because it matches one of the provided `user_filters` inputs, namely the `group#member` filter. So in this case for this user we only return the computed relation that stems from the `document:example#editor` resolution path.
 
 2. Notice the usage of the relation 'viewer' in the request. This relation is the greatest common denominator of the relations included in the list of permissions in the UI dialog next to each user/subject's name. Here's how to interpret the response and how the Google Docs app would use the response to build the UI:
 
@@ -841,7 +843,7 @@ This response indicates to the Google Docs apps that viewer permissions to `docu
 
 ### Multiple Target Relations
 
-The ability to specify multiple target relations was considered. This would have enabled developers to display users who had a variety of relations to a specific object. Supporting this would have introduced performance concerns and all the existing endpoints operate on a single-relation basis, which would have made this behavior inconsistent. 
+The ability to specify multiple target relations was considered. This would have enabled developers to list users of more than one type that have a specific relation with an object. Supporting multiple target relations would have introduced performance concerns. Further, all existing endpoints operate on a single-relation basis, which would have made this behavior inconsistent.
 
 ## Migration
 [migration]: #migration
