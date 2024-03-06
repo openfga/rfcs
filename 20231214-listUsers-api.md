@@ -57,7 +57,7 @@ More specifically, given an [object](https://openfga.dev/docs/concepts#what-is-a
 ## Motivation
 [motivation]: #motivation
 
-Developers using OpenFGA want to be able to query the users that have a relationship with a particular object. 
+Developers using OpenFGA want to look up all of the users that have a particular relationship with an object. 
 
 ### Use Cases
 
