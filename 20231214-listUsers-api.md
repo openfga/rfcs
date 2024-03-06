@@ -166,7 +166,7 @@ Unless otherwise noted, the intent is for the `ListUsers` and `StreamedListUsers
         string authorization_model_id = 2;
         string object = 3;
         string relation = 4;
-        repeated RelationReference user_filter = 5;
+        repeated RelationReference user_filters = 5;
         repeated TupleKey contextual_tuples = 6;
         google.protobuf.Struct context = 7;
     }
