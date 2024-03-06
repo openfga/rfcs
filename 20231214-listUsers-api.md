@@ -2,9 +2,9 @@
 [meta]: #meta
 - Name: ListUsers and StreamedListUsers APIs
 - Start Date: 2023-12-14
-- Author(s): @jon-whit
-- Status: Draft <!-- Acceptable values: Draft, Approved, On Hold, Superseded -->
-- RFC Pull Request: (leave blank)
+- Author(s): @jon-whit, @willvedd, @miparnisari
+- Status: Approved <!-- Acceptable values: Draft, Approved, On Hold, Superseded -->
+- RFC Pull Request: https://github.com/openfga/rfcs/pull/15
 - Relevant Issues:
   - https://github.com/openfga/roadmap/issues/16 (main roadmap issue)
   - https://github.com/openfga/openfga/issues/406
@@ -12,17 +12,33 @@
 
 - Supersedes: N/A
 
-# Summary
+## Table of Contents 
+- [Summary](#summary)
+- [Definitions](#definitions)
+- [Motivation](#motivation)
+- [What it is](#what-it-is)
+- [API Semantics](#api-semantics)
+- [API and Server Configuration Changes](#api-and-server-configuration-changes)
+- [How it Works](#how-it-works)
+- [Algorithm](#algorithm)
+- [Concurrency Control](#concurrency-control)
+- [Out of Scope](#out-of-scope)
+- [Pruning/Directing Expansion with Graph Edges](#pruningdirecting-expansion-with-graph-edges)
+- [Migration](#migration)
+- [Drawbacks](#drawbacks)
+- [Alternatives](#alternatives)
+- [Prior Art](#prior-art)
+- [Open Questions](#open-questions)
+
+## Summary
 [summary]: #summary
 
-The `ListUsers` and `StreamedListUsers` will provide an API that answers the question
+The `ListUsers` API will provide an API that answers the question, **who are all the users that have a relationship with an object**?
 
-> Who are all the users that have a relationship with an object?
-
-More specifically, given an [object](https://openfga.dev/docs/concepts#what-is-an-object) and [relation](https://openfga.dev/docs/concepts#what-is-a-relation), these APIs will return all of the concrete/terminal [user](https://openfga.dev/docs/concepts#what-is-a-user) objects of a particular type that have that [relationship](https://openfga.dev/docs/concepts#what-is-a-relationship).
+More specifically, given an [object](https://openfga.dev/docs/concepts#what-is-an-object), the `ListUsers` API will return all of the concrete/terminal [user](https://openfga.dev/docs/concepts#what-is-a-user) subjects that have a [relationship](https://openfga.dev/docs/concepts#what-is-a-relation) with that object.
 
 
-# Definitions
+## Definitions
 [definitions]: #definitions
 
 * You may see references to strings formatted as **`object#relation@user`** in this document. This is short-hand notation for representing an OpenFGA Relationship Tuple. For example, `group:eng#member@user:jon` or `document:1#viewer@group:eng#member` etc.. You may also see strings formatted as `objectType#relation`. This is short-hand notation for representing a specific relation defined on some object type. For example, `document#viewer` represents the viewer relationship defined on the document object type.
@@ -38,23 +54,21 @@ More specifically, given an [object](https://openfga.dev/docs/concepts#what-is-a
 * **Userset** - A userset refers to a set of zero or more concrete objects that are the subjects that a relationship expands to. See our Concepts page on [Users](https://openfga.dev/docs/concepts#what-is-a-user) for more info.
 
 
-# Motivation
+## Motivation
 [motivation]: #motivation
 
-- Why should we do this?
+Developers using OpenFGA want to be able to query the users that have a relationship with a particular object. 
 
-Developers using OpenFGA want to be able to do a reverse query and lookup all of the users that have a particular relationship with an object. 
+### Use Cases
 
-- What use cases does it support?
+- **UIs** - Display the users that a resource has been shared with. Ex: the "Share" dialog in Google Docs.
+- **Notifications** - Notify all users who relate to a specific object. Ex: send and email to editors of a document when it has been updated.
 
-**UIs** - display the users that a resource has been shared with. Think of the "Share" dialog in Google Docs, for example.
-
-
-- What is the expected outcome?
+### Expected Outcome
 
 Two new core APIs are added to the [OpenFGA API](https://github.com/openfga/api) and implementations of these new APIs in the [OpenFGA server](https://github.com/openfga/openfga).
 
-# What it is
+## What it is
 [what-it-is]: #what-it-is
 
 Given an `object`, `relation`, and one or more user/subject provided filters, return the concrete/terminal set of user objects matching at least one of the user filters that have that relationship with the object.
@@ -94,8 +108,12 @@ ListUsers and StreamedListUsers would behave as follows:
 ListUsers({
     object: "document:1",
     relation: "viewer",
-    user_filter: [{type: "user"}]
-}) --> ["user:anne", "user:jon"]
+    user_filters: [{type: "user"}]
+}) --> 
+{
+  users: [],
+  wildcard_types: ["user:anne", "user:jon"]
+}
 ```
 
 **Example 2**
@@ -105,7 +123,10 @@ ListUsers({
     object: "document:1",
     relation: "viewer",
     user_filter: [{type: "group"}]
-}) --> []
+}) --> {
+  users: [],
+  wildcard_types: []
+}
 ```
 
 **Example 3**
@@ -120,11 +141,15 @@ ListUsers({
         relation: "member"
       }
     ]
-}) --> ["group:eng", "group:fga"]
+}) --> 
+{
+  users: ["group:eng", "group:fga"]
+  wildcard_types: []
+}
 ```
 
 ## API Semantics
-Unless otherwise noted, the intent is for the ListUsers and StreamedListUsers APIs to behave similarly with the ListObjects and StreamedListObjects API. This is to encourage more uniformity in the API experience. The API and server configuration should reflect similarities, the error propagation strategy should strive to be the same, and any limits and/or deadline behaviors should strive to be identical unless there is a compelling reason to have an exception. We may find such compelling reasons as we dig into the implementation details further, but it's not obvious why/if it would have to differ at this time.
+Unless otherwise noted, the intent is for the `ListUsers` and `StreamedListUsers` APIs to behave similarly with the `ListObjects` and `StreamedListObjects` API. This is to encourage more uniformity in the API experience. The API and server configuration should reflect similarities, the error propagation strategy should strive to be the same, and any limits and/or deadline behaviors should strive to be identical unless there is a compelling reason to have an exception. We may find such compelling reasons as we dig into the implementation details further, but it's not obvious why/if it would have to differ at this time.
 
 ## API and Server Configuration Changes
 - Introduce the new protobuf API definitions.
@@ -196,19 +221,24 @@ The server flag `--listUsers-max-results` (mentioned above) will limit the size 
 ListUsers and StreamedListUsers should strive to implement error handling semantics inline with the way ListObjects and StreamedListObjects do. Namely, the API  should strive to fulfill the request with its limits as much as possible. For the unary ListUsers endpoint, if and only if it cannot fulfill the requested `--listUsers-max-results` and at least one error occurred, then an error should be surfaced. For the StreamedListUsers endpoint, as errors are encountered they should be yielded over the stream.
 
 ### Typed Public Wildcard
-Nothing special is required when handling typed wildcards when an explicit filter is provided. Namely, consider this model, tuples, and request:
+
+Special treatment is given to typed wildcards that match the criteria of a ListUsers query. Because they are not "users" in a normal sense, their results are separated from specific ID'd users with a dedicated `wildcard_types` property in the response body. This separation enables easier parsing of users and allows developers to handle the wildcard case to their specific needs.
 
 ```go
 type user
+type employee
 
 type document
   relations
-    define viewer: [user:*]
+    define viewer: [user:*, employee:*]
 ```
 
-| object     | relation | user        |
-|------------|----------|-------------|
-| document:1 | viewer   | user:*      |
+| object     | relation | user            |
+|------------|----------|-----------------|
+| document:1 | viewer   | user:*          |
+| document:1 | viewer   | employee:*      |
+
+**Example 1:**
 
 ```
 ListUsers({
@@ -217,26 +247,38 @@ ListUsers({
   user_filter: [
     {
       type: "user",
-      wildcard: {}
     }
   ]
-}) --> ["user:*"]
+}) --> {
+  wildcard_types: ["user"]
+  users: [],
+}
 ```
-In this example there is a single tuple establishing a typed wildcard of type `user` with `document:1#viewer`, and while expanding the ListUsers request we yield the typed wildcard directly because it matches one of the filters in the `user_filter`.
+In example 1, there are two tuples establishing a typed wildcard, one for `user` and `employee`, both with `document:1#viewer`. But while expanding the ListUsers request we only return the `user` type in the `wildcard_types` property because it is the only tuple that matches the filters in the `user_filter`.
 
-----
 
-It's not obvious, however, what the expected behavior should be with the following request:
+**Example 2:**
+
 ```
 ListUsers({
   object: "document:1",
   relation: "viewer",
-  user_filter: [{type: "user"}]
-}) --> ?
+  user_filter: [
+    {
+      type: "user",
+    }
+    {
+      type: "employee",
+    }
+  ]
+}) --> {
+  wildcard_types: ["user","employee"]
+  users: [],
+}
 ```
-In this case should we still yield the wildcard tuple `user:*` or should that be a configurable thing that the client chooses in the request (e.g. a request input to "include wildcards")? **This remains an open question.**
+However, in example 2, both `user` and `employee` typed wildcard are returned because those user types were specified in the `user_filter` input field.
 
-# How it Works
+## How it Works
 [how-it-works]: #how-it-works
 
 ## Algorithm
@@ -273,7 +315,10 @@ ListUsers({
   object: "document:1",
   relation: "viewer",
   user_filter: [{type: "user"}]
-}) --> ["user:jon", "user:andres"]
+}) --> {
+  users: ["user:jon", "user:andres"],
+  wildcard_types: []
+}
 ```
 In this case the algorithm simply must expand all direct relationships between `document:1#viewer` and `user` objects. Since these are directly related to one another, then we must only do a simple reverse database lookup.
 
@@ -369,11 +414,13 @@ ListUsers({
   relation: "viewer",
   user_filter: [
     {
-      type: "user",
-      wildcard: {}
+      type: "user"
     }
   ]
-}) --> ["user:*"]
+}) --> {
+  users: ["user"],
+  wildcard_types: []
+}
 ```
 
 1. Expand the set of subjects/users that relate to `document:1#viewer`.
@@ -416,7 +463,10 @@ ListUsers({
   object: "document:1",
   relation: "viewer",
   user_filter: [{type: "user"}]
-}) --> ["user:jon"]
+}) --> {
+  users: ["user:jon"],
+  wildcard_types: []
+}
 ```
 This example demonstrates a simple rewritten relation involved in the expansion. Instead of expanding `document:1#viewer` we immediately rewrite that to `document:1#editor` and expand that. Namely,
 
@@ -465,7 +515,10 @@ ListUsers({
   object: "document:1",
   relation: "viewer",
   user_filter: [{type: "user"}]
-}) --> ["user:jon"]
+})  --> {
+  users: ["user:jon"],
+  wildcard_types: []
+}
 ```
 
 1. Rewrite document#viewer through tuple_to_userset (TTU).
@@ -533,7 +586,10 @@ ListUsers({
       relation: "member"
     }
   ]
-}) --> ["group:eng", "group:fga"]
+}) --> {
+  users: ["group:eng", "group:fga"],
+  wildcard_types: []
+}
 ```
 This example deviates from many of the examples above in that we expand all relationships for a specific object and relation (e.g. `document:1#viewer`) that are related to a given set of users or subject set (e.g. `group#member`).
 
@@ -565,134 +621,6 @@ yield group:eng
 
 return ["group:eng", "group:fga"]
 ```
-
-### Example 5 (Google Docs Share Dialog)
-This example showcases/highlights the behavior of ListUsers and how the API behaves when multiple target user filters are provided, and this behavior enables the experience that you get in Google Docs when you open the Share dialog.
-
-We'll use the dialog example below to demonstrate the use case.
-
-![](./assets/images/google-docs-share-dialog.png)
-
-We'll use the following model and tuples for this example:
-```
-type user
-
-type organization
-  relations
-    define member: [group#member]
-
-type group
-  relations
-    define member: [user, group#member]
-
-type folder
-  relations
-    define viewer: [user]
-
-type document
-  relations
-    define parent: [folder]
-    define owner: [user]
-    define editor: [user, group#member] or owner
-    define viewer: [user, group#member] or editor or viewer from parent
-```
-| object                  | relation | user                           |
-|-------------------------|----------|--------------------------------|
-| document:example        | owner    | user:jon.whitaker@okta.com     |
-| document:example        | parent   | folder:x                       |
-| folder:x                | viewer   | user:andres.aguiar@okta.com    |
-| document:example        | editor   | group:iam-fga@auth0.com#member |
-| group:iam-fga@auth0.com | member   | user:jon.whitaker@okta.com     |
-| document:example        | viewer   | user:*                         |
-
-The dialog display has two unique sections "People with access" and "General access", and these different sections distinguish between access that has been shared with specific individual end-users and/or groups of end-users versus access that has been broadly shared to anyone in the org (e.g. a wildcard scoped to an org context).
-
-To handle this Google Doc Share Dialog use case we'd call `ListUsers` twice, one for each section of the dialog.
-
-To render the "People with access" section we'd make the following query:
-```
-ListUsers({
-  object: "document:example",
-  relation: "viewer",
-  user_filter: [
-    {
-      type: "user"
-    },
-    {
-      type: "group",
-      relation: "member"
-    }
-  ]
-}) --> [
-  {
-    user: "user:jon.whitaker@okta.com",
-    resolved_paths: [
-      {
-        "object": "document:example",
-        "relation": "editor"
-      },
-      {
-        "object": "document:example",
-        "relation": "owner"
-      }
-    ]
-  },
-  {
-    user: "user:andres.aguiar@okta.com",
-    resolved_paths: [
-      {
-        "object": "folder:x",
-        "relation": "viewer"
-      }
-    ]
-  },
-  {
-    user: "group:iam-fga@auth0.com",
-    resolved_paths: [
-      {
-        "object": "document:example",
-        "relation": "editor"
-      }
-    ]
-  }
-]
-```
-Two things are important to point out about this response:
-
-1. We didn't return `user:jon.whitaker@okta.com` twice, because once we find the group `group:iam-fga@auth0.com#member`, which this user is apart of, we stop expanding that group because it matches one of the provided user_filter inputs, namely the `group#member` filter. So in this case for this user we only return the computed relation that stems from the `document:example#owner` resolution path.
-
-2. Notice the usage of the relation 'viewer' in the request. This relation is the greatest common denominator of the relations included in the list of permissions in the UI dialog next to each user/subject's name. Here's how to interpret the response and how the Google Docs app would use the response to build the UI:
-
-    - Since `user:jon.whitaker@okta.com` is the owner we find resolution paths stemming from `document:example#owner` and thus `document:example#editor` that lead to `document:example#viewer`. The Google Doc Share Dialog chooses to prioritize the highest permission in the UI dropdown boxes, so in this case the UI shows the `owner` relation next to `user:jon.whitaker@okta.com`
-
-    - `user:andres.aguiar@okta.com` can view the parent folder `folder:x`, and thus we find a resolution path to `document:example#viewer` through `folder:x#viewer`. The Google Doc Share Dialog chooses to render the inherited permission `document#viewer` based on this resolution path.
-
-    - The set of users/subjects included in `group:iam-fga@auth0.com#member` have editor acces, and thus we find a resolution path stemming from `document:example#editor` that leads to `document:example#viewer`. The Google Doc Share Dialog chooses to render group memberships such as this as the Google Group and the highest permission that set of subjects has, which is `editor` in this case.
-
-To render the "General access" section we'd issue a specific query for the typed public wildcard:
-```
-ListUsers({
-  object: "document:example",
-  relation: "viewer",
-  user_filter: [
-    {
-      type: "user",
-      wildcard: {}
-    }
-  ]
-}) --> [
-  {
-    user: "user:*",
-    resolved_paths: [
-      {
-        "object": "document:example",
-        "relation": "viewer"
-      }
-    ]
-  }
-]
-```
-This response indicates to the Google Docs apps that viewer permissions to `document:example` have been explicitly granted to any object of type `user`, and then the app can use this to implement a link-based sharing mechanism.
 
 ### Intersection and Exclusion
 For relationships that involve an intersection (e.g. `a and b`) or exclusion (e.g. `a but not b`) we'll apply the same algorithmic approach we do in ListObjects. Namely, given the set `a and b` we'll compute `a` and then call `Check` for each of the results to resolve the set intersection through Check resolution. Likewise, for `a but not b` we'll compute `a` and then call `Check` for each of the results to resolve the set difference.
@@ -740,7 +668,7 @@ Similarly, for recursively expanding deeply nested sets, consider the same model
 | ...     | member   | ...            |
 | group:N | member   | user:jon       |
 
-If a deveoper were to call
+If a developer were to call
 ```
 ListUsers({
   object: "group:1",
@@ -789,19 +717,145 @@ ListUsers({
 ```
 then a naive implementation would start expanding all `group#member` relationships only to find that `user` objects aren't related to any group members. This is because the type restrictions would not allow such relationships to exist in the first place. In this case, if `N` is large, this is a server concern. Consequently, we should avoiding expanding edges that would not lead to a terminal object that matches one of the targets in the provided `user_filter` list. We can do so by using the relationship edges information we have available in the OpenFGA typesystem.
 
-# Migration
+## Out of Scope
+
+The following API features were considered been deemed out-of-scope for the initial development of `ListUsers`.
+
+### Resolved Paths
+Resolved paths answer the question of how a user is related to an object. The following example showcases the potential behavior of resolved paths in `ListUsers` and how the API behaves when multiple target user filters are provided. 
+
+This behavior enables experiences similar to that you get in Google Docs when you open the Share dialog.
+
+![](./assets/images/google-docs-share-dialog.png)
+
+We'll use the following model and tuples for this example:
+```
+type user
+
+type organization
+  relations
+    define member: [group#member]
+
+type group
+  relations
+    define member: [user, group#member]
+
+type folder
+  relations
+    define viewer: [user]
+
+type document
+  relations
+    define parent: [folder]
+    define owner: [user]
+    define editor: [user, group#member] or owner
+    define viewer: [user, group#member] or editor or viewer from parent
+```
+| object                  | relation | user                           |
+|-------------------------|----------|--------------------------------|
+| document:example        | owner    | user:maria                     |
+| document:example        | editor   | user:will                      |
+| document:example        | parent   | folder:x                       |
+| folder:x                | viewer   | user:andres                    |
+| document:example        | viewer   | group:engineering#member       |
+| group:engineering       | member   | user:will                      | 
+| document:example        | viewer   | user:*                         |
+
+The dialog display has two unique sections "People with access" and "General access", and these different sections distinguish between access that has been shared with specific individual end-users and/or groups of end-users versus access that has been broadly shared to anyone in the org (e.g. a wildcard scoped to an org context).
+
+To handle this Google Doc Share Dialog use case we'd call `ListUsers` twice, one for each section of the dialog.
+
+To render the "People with access" section we'd make the following query:
+```
+ListUsers({
+  object: "document:example",
+  relation: "viewer",
+  user_filter: [
+    {
+      type: "user"
+    },
+    {
+      type: "group",
+      relation: "member"
+    }
+  ]
+}) --> {
+  users: [
+    {
+      user: "user:maria",
+      resolved_paths: [
+        {
+          "object": "document:example",
+          "relation": "owner"
+        }
+      ]
+    },
+    {
+      user: "user:will",
+      resolved_paths: [
+        {
+          "object": "document:example",
+          "relation": "editor"
+        }
+      ]
+    },
+    {
+      user: "user:andres",
+      resolved_paths: [
+        {
+          "object": "folder:x",
+          "relation": "viewer"
+        }
+      ]
+    },
+    {
+      user: "group:engineering",
+      resolved_paths: [
+        {
+          "object": "document:example",
+          "relation": "viewer"
+        }
+      ]
+    }
+  ],
+  wildcard_types: ["user"]
+}
+```
+Two things are important to point out about this response:
+
+1. We didn't return `user:will` twice, because once we find the group `group:engineering#member`, which this user is apart of, we stop expanding that group because it matches one of the provided `user_filter` inputs, namely the `group#member` filter. So in this case for this user we only return the computed relation that stems from the `document:example#editor` resolution path.
+
+2. Notice the usage of the relation 'viewer' in the request. This relation is the greatest common denominator of the relations included in the list of permissions in the UI dialog next to each user/subject's name. Here's how to interpret the response and how the Google Docs app would use the response to build the UI:
+
+    - Since `user:maria` is the owner we find resolution paths stemming from `document:example#editor` and `document:example#viewer` thus leading to `document:example#viewer`. The Google Doc Share Dialog chooses to prioritize the highest permission in the UI dropdown boxes, so in this case the UI shows the `owner` relation next to `user:maria`
+
+     - Likewise, since `user:will` is assigned `document:example#editor` which has a computed relationship to `document:example#viewer`. So in this case the UI shows the `editor` relation next to `user:will`
+
+    - `user:andres` can view the parent folder `folder:x`, and thus we find a resolution path to `document:example#viewer` through `folder:x#viewer`. The Google Doc Share Dialog chooses to render the inherited permission `document#viewer` based on this resolution path.
+
+    - The set of users/subjects included in `group:engineering` have editor acces, and thus we find a resolution path stemming from `document:example#viewer` that leads to `document:example#viewer`. The Google Doc Share Dialog chooses to render group memberships such as this as the Google Group and the highest permission that set of subjects has, which is `viewer` in this case.
+
+3. The `user` type wildcard is returned in the `wildcard_types` portion of the response. This special treatment lends nicely to the Google Doc Share example, which has a visually unique treatment.
+
+This response indicates to the Google Docs apps that viewer permissions to `document:example` have been explicitly granted to any object of type `user`, and then the app can use this to implement a link-based sharing mechanism.
+
+### Multiple Target Relations
+
+The ability to specify multiple target relations was considered. This would have enabled developers to display users who had a variety of relations to a specific object. Supporting this would have introduced performance concerns and all the existing endpoints operate on a single-relation basis, which would have made this behavior inconsistent. 
+
+## Migration
 [migration]: #migration
 
 * No migrations or API breaking changes should be necessary for this work. We're extending the API surface, not changing it.
 
-# Drawbacks
+## Drawbacks
 [drawbacks]: #drawbacks
 
 * Increases API surface to maintain
 
 * Another costly graph traversal query - when we added ListObjects and StreamedListObjects we had to work through some reliability improvements to ensure these new APIs didn't exhaust the database connection pool. These same considerations will be very relevant to this work as well.
 
-# Alternatives
+## Alternatives
 [alternatives]: #alternatives
 
 - The client calls Check for every user in the system for the given `object` and `relation`
@@ -810,32 +864,24 @@ This is *an option*, but it is not one that is conducive to performance and/or h
 
 - Naive server implementation which queries all subjects/users in the system that match the target subject/user filter and for each of them call Check on the provided `object` and `relation` (e.g. server-side BatchCheck naive implementation).
 
-A preliminary implementation spike revealed that this approach would not cater to various of the use cases we explored including the Google Share Dialog that is discussed in more depth above in [Example 5](#example-5-google-docs-share-dialog). For this reason and for performance concerns (e.g. the volume of Checks that would have to occur) we do not feel this is a viable approach.
+A preliminary implementation spike revealed that this approach would not cater to various of the use cases we explored including the Google Share Dialog that is discussed in more depth above in [Resolved Paths](#resolved-paths). For this reason and for performance concerns (e.g. the volume of Checks that would have to occur) we do not feel this is a viable approach.
 
 - Encourage clients to implement Expand recursively themselves
 
 There’s nothing stopping clients from implementing ListUsers today using the existing `Expand` API, and we won’t necessarily discourage it even after we implement ListUsers. However, we want to build ListUsers to provide this API more natively in the API offering and thus reduce duplication across the community and the burden on the client. We want to provide developers in the community with a simple to use API that doesn’t require reimplementing this logic anywhere it is needed. I anticipate the community will build API endpoints providing recursive Expand for this use case, and so we may as well offer it natively in the API.
 
-# Prior Art
+## Prior Art
 [prior-art]: #prior-art
 
-The following code implements a POC implementation of `ListUsers`. The code is not quite complete when it comes to intersection and exclusion or the typed wildcard behavior described above, but it demonstrates the main algorithmic composition. Intersection and exclusion support will behave similarly to how intersection and exclusion behave in ListObjects. That is, a set of users that are contained under an intersection or exclusion will require additional Checks to resolve the set intersection or exclusion directly. 
+The following code implements a POC implementation of `ListUsers`. The code is not quite complete when it comes to intersection and exclusion or the [typed public wildcard](#typed-public-wildcard) behavior described above, but it demonstrates the main algorithmic composition. Intersection and exclusion support will behave similarly to how intersection and exclusion behave in ListObjects. That is, a set of users that are contained under an intersection or exclusion will require additional Checks to resolve the set intersection or exclusion directly. 
 
 https://github.com/jon-whit/openfga/blob/168986a51aae8281499aeb1b643d818621b70a07/pkg/server/commands/listusers/list_users_rpc.go
 
-# Unresolved Questions
-[unresolved-questions]: #unresolved-questions
+## Open Questions
+[open-questions]: #open-questions
+
+- What uses cases would this help you solve? See: [use cases](#use-cases)
 
 - What parts of the design do you expect to be resolved before this gets merged?
 
-  - Should a tuple such as `document:1#viewer@user:*` cause a result to be included in the response if the filter is `user_filter: [{type: "user"}]` or should we require explicit passing of `user_filter: [{type: "user", wildcard: {}}]`? Or should this be behavior that is configurable *per request* (e.g. a query parameter/input of the request itself)?
-
-  - Should we include the `resolved_paths` field in each response in the initial implementation, or should we postpone that? It is necessary to efficiently address the Google Doc Share Dialog scenario described in [Example 5](#example-5-google-docs-share-dialog). We just need to decide if that is in scope of the initial work.
-
-- What parts of the design do you expect to be resolved through implementation of the feature?
-
-  - The implementation should take into account dispatch composition. Any further expansion of a given ListUsers subproblem should be composed through a uniform loopback function call mechanism. This will allow for subproblem resolution to be dispatched over a network interface at a later time if we so choose.
-
 - What related issues do you consider out of scope for this RFC that could be addressed in the future independently of the solution that comes out of this RFC?
-
-  - Providing a way to expand wildcards to the set of objects that the system knows about should initially be out of scope but can be revisited without significant impact at a later time (see [Typed Public Wildcard](#typed-public-wildcard) section for more info).
