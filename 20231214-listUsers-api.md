@@ -71,7 +71,7 @@ Two new core APIs are added to the [OpenFGA API](https://github.com/openfga/api)
 ## What it is
 [what-it-is]: #what-it-is
 
-Given an `object`, `relation`, and one or more user/subject provided filters, return the concrete/terminal set of user objects matching at least one of the user filters that have that relationship with the object.
+Given an `object`, `relation`, and one or more user/subject provided filters, return the concrete/terminal users or sets of users matching at least one of the user filters that have that relationship with the object.
 
 More formally, given the following model and relationship tuples:
 
