@@ -207,6 +207,40 @@ type page
 
 Module information will be stored in the JSON representation of the model as metadata. Using that information it should be possible to reconstruct each module, and use module information for authorization decision in the future (e.g. certain applications can only write tuples to certain modules).
 
+This metadata will be stored in the below structure, and will be stored as part of the existing `metadata` for types and relations, and a new `metadata` property will be added for conditions. File and module metadata will only be added to relations that originate from extended types and not to relations that come from the original type.
+
+```json
+{
+  "file": string,
+  "module": string
+}
+```
+
+For example the `organization` type from `core.module.fga` would look like below (fields other than `metadata` removed for brevity):
+
+```json
+{
+  "type": "organization",
+  "relations": { },
+  "metadata": {
+    "relations": {
+      "member": { },
+      "admin": { },
+      "can_create_space": {
+        "module": "confluence",
+        "file": "confluence.module.fga"
+      },
+      "can_create_project": {
+        "module": "jira",
+        "file": "jira.module.fga"
+      }
+    },
+    "module": "core",
+    "file": "core.module.fga"
+  }
+}
+```
+
 ## Managing Modules in Github
 
 To enable collaboration across multiple teams, the `.github/CODEOWNERS` file in the repository can be used to define which team owns which module. Members of that team will need to approve PRs that change the module.
