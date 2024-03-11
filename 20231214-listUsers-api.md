@@ -497,7 +497,7 @@ ListUsers({
 
     1. We find a terminal/concrete wildcard of `user:*`, which matches the `user:*` in the user filter, and so we add it to the list of items to include in the response.
 
-1. No further subjects to expand, and so we're done. Return the items we accumulated from the steps above.
+1. No further users to expand, and so we're done. Return the items we accumulated from the steps above.
 
 Visually, the overall recursive call tree looks like the following:
 
