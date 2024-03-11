@@ -211,6 +211,7 @@ This metadata will be stored in the below structure, and will be stored as part 
 
 ```json
 {
+  ...,
   "file": string,
   "module": string
 }
@@ -221,11 +222,11 @@ For example the `organization` type from `core.module.fga` would look like below
 ```json
 {
   "type": "organization",
-  "relations": { },
+  "relations": { ... },
   "metadata": {
     "relations": {
-      "member": { },
-      "admin": { },
+      "member": { ... },
+      "admin": { ... },
       "can_create_space": {
         "module": "confluence",
         "file": "confluence.module.fga"
