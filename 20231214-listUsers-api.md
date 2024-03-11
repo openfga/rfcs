@@ -215,6 +215,8 @@ Unless otherwise noted, the intent is for the `ListUsers` and `StreamedListUsers
     
     The `user_filters` defines an array of `ListUsersFilter` (e.g. type restriction definitions) that will be used to control the expansion. As ListUsers expansion occurs, if we find a user/subject that meets one of the user_filters type restriction(s), then we include the result in the response and stop further expansion on that subproblem. Once we've found a result meeting the filter criteria we don't explore that subproblem any further, even if it would lead to more results matching the other filters in the `user_filters` (see Example 5 below for further details).
 
+    Initially `user_filters` will be limited to 1 filter (array of size 1), but we've planned on allowing the client to filter by multiple user filters in the future (as the community sees the need).
+
     - **StreamedListUsers**
     
     ```go
