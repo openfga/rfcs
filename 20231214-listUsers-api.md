@@ -109,10 +109,17 @@ ListUsers({
     object: "document:1",
     relation: "viewer",
     user_filters: [{type: "user"}]
-}) --> 
-{
-  users: [],
-  wildcard_types: ["user:anne", "user:jon"]
+}) --> {
+  "users": [
+    {
+      "type": "user",
+      "id": "anne"
+    },
+    {
+      "type": "user",
+      "id": "jon"
+    }
+  ]
 }
 ```
 
@@ -124,8 +131,7 @@ ListUsers({
     relation: "viewer",
     user_filters: [{type: "group"}]
 }) --> {
-  users: [],
-  wildcard_types: []
+  "users": []
 }
 ```
 
@@ -143,8 +149,18 @@ ListUsers({
     ]
 }) --> 
 {
-  users: ["group:eng#member", "group:fga#member"]
-  wildcard_types: []
+  "users": [
+    {
+      "type": "group",
+      "id": "eng",
+      "relation": "member"
+    },
+    {
+      "type": "group",
+      "id": "fga",
+      "relation": "member"
+    }
+  ]
 }
 ```
 
@@ -166,7 +182,7 @@ Unless otherwise noted, the intent is for the `ListUsers` and `StreamedListUsers
         string authorization_model_id = 2;
         string object = 3;
         string relation = 4;
-        repeated RelationReference user_filters = 5;
+        repeated ListUsersFilter user_filters = 5;
         repeated TupleKey contextual_tuples = 6;
         google.protobuf.Struct context = 7;
     }
@@ -174,12 +190,30 @@ Unless otherwise noted, the intent is for the `ListUsers` and `StreamedListUsers
     // ListUsersResponse represents a unary response with
     // all user result(s) up to the maximum limit.
     message ListUsersResponse {
-      repeated string users = 1; // e.g. ["user:1"]
-      repeated string wildcard_types = 2; // e.g. ["user"]
+      repeated User users = 1;
+    }
+
+    message User {
+      oneof user {
+        Object object = 1;
+        UsersetUser userset = 2;
+        Wildcard wildcard = 3;
+      }
+    }
+
+    message UsersetUser {
+      string type = 1;
+      string id = 2;
+      string relation = 3;
+    }
+
+    message ListUsersFilter {
+      string type = 1;
+      string relation = 2;
     }
     ```
     
-    The `user_filters` defines an array of [RelationReference](https://github.com/openfga/api/blob/c491fa728f66c961fd17f5d7dfd491be197b343e/openfga/v1/authzmodel.proto#L90) (e.g. type restriction definitions) that will be used to control the expansion. As ListUsers expansion occurs, if we find a user/subject that meets one of the user_filters type restriction(s), then we include the result in the response and stop further expansion on that subproblem. Once we've found a result meeting the filter criteria we don't explore that subproblem any further, even if it would lead to more results matching the other filters in the `user_filters` (see Example 5 below for further details).
+    The `user_filters` defines an array of `ListUsersFilter` (e.g. type restriction definitions) that will be used to control the expansion. As ListUsers expansion occurs, if we find a user/subject that meets one of the user_filters type restriction(s), then we include the result in the response and stop further expansion on that subproblem. Once we've found a result meeting the filter criteria we don't explore that subproblem any further, even if it would lead to more results matching the other filters in the `user_filters` (see Example 5 below for further details).
 
     - **StreamedListUsers**
     
@@ -191,7 +225,7 @@ Unless otherwise noted, the intent is for the `ListUsers` and `StreamedListUsers
         string authorization_model_id = 2;
         string object = 3;
         string relation = 4;
-        repeated RelationReference user_filters = 5;
+        repeated ListUsersFilter user_filters = 5;
         repeated TupleKey contextual_tuples = 6;
         google.protobuf.Struct context = 7;
     }
@@ -199,8 +233,7 @@ Unless otherwise noted, the intent is for the `ListUsers` and `StreamedListUsers
     // StreamedListUsersResponse represents a single streaming user result 
     // returned from the streaming endpoint.
     message StreamedListUsersResponse {        
-      string user = 1; // e.g. "user:1"
-      string wildcard_type = 2; // e.g. "user"
+      User user = 1;
     }
     ```
     
@@ -223,8 +256,6 @@ The server flag `--listUsers-max-results` (mentioned above) will limit the size 
 ListUsers and StreamedListUsers should strive to implement error handling semantics inline with the way ListObjects and StreamedListObjects do. Namely, the API  should strive to fulfill the request with its limits as much as possible. For the unary ListUsers endpoint, if and only if it cannot fulfill the requested `--listUsers-max-results` and at least one error occurred, then an error should be surfaced. For the StreamedListUsers endpoint, as errors are encountered they should be yielded over the stream.
 
 ### Typed Public Wildcard
-
-Special treatment is given to typed wildcards that match the criteria of a ListUsers query. Because they are not "users" in a normal sense, their results are separated from specific ID'd users with a dedicated `wildcard_types` property in the response body. This separation enables easier parsing of users and allows developers to handle the wildcard case to their specific needs.
 
 ```go
 type user
@@ -252,8 +283,12 @@ ListUsers({
     }
   ]
 }) --> {
-  wildcard_types: ["user"]
-  users: [],
+  "users": [
+    {
+      "type": "user",
+      "wildcard": {}
+    }
+  ]
 }
 ```
 In example 1, there are two tuples establishing a typed wildcard, one for `user` and `employee`, both with `document:1#viewer`. But while expanding the ListUsers request we only return the `user` type in the `wildcard_types` property because it is the only tuple that matches the filters in the `user_filters`.
@@ -274,8 +309,16 @@ ListUsers({
     }
   ]
 }) --> {
-  wildcard_types: ["user","employee"]
-  users: [],
+  "users": [
+    {
+      "type": "user",
+      "wildcard": {}
+    },
+    {
+      "type": "employee",
+      "wildcard": {}
+    }
+  ]
 }
 ```
 However, in example 2, both `user` and `employee` typed wildcard are returned because those user types were specified in the `user_filters` input field.
@@ -318,8 +361,16 @@ ListUsers({
   relation: "viewer",
   user_filters: [{type: "user"}]
 }) --> {
-  users: ["user:jon", "user:andres"],
-  wildcard_types: []
+  "users": [
+    {
+      "type": "user",
+      "id": "jon"
+    },
+    {
+      "type": "user",
+      "id": "andres"
+    }
+  ]
 }
 ```
 In this case the algorithm simply must expand all direct relationships between `document:1#viewer` and `user` objects. Since these are directly related to one another, then we must only do a simple reverse database lookup.
@@ -352,7 +403,18 @@ ListUsers({
   object: "document:1",
   relation: "viewer",
   user_filters: [{type: "user"}]
-}) --> ["user:jon", "user:andres"]
+}) --> {
+  "users": [
+    {
+      "type": "user",
+      "id": "jon"
+    },
+    {
+      "type": "user",
+      "id": "andres
+    }
+  ]
+}
 ```
 This example requires recursive expansion.
 > ℹ️ The usage of `expand` from here forward refers to an internal expand function, and it should not be confused with the public Expand API, but it operates somewhat similarly.
@@ -420,8 +482,12 @@ ListUsers({
     }
   ]
 }) --> {
-  users: [],
-  wildcard_types: ["user"]
+  "users": [
+    {
+      "type": "user",
+      "wildcard": {}
+    }
+  ]
 }
 ```
 
@@ -466,8 +532,12 @@ ListUsers({
   relation: "viewer",
   user_filters: [{type: "user"}]
 }) --> {
-  users: ["user:jon"],
-  wildcard_types: []
+  "users": [
+    {
+      "type": "user",
+      "id": "jon"
+    }
+  ]
 }
 ```
 This example demonstrates a simple rewritten relation involved in the expansion. Instead of expanding `document:1#viewer` we immediately rewrite that to `document:1#editor` and expand that. Namely,
@@ -518,8 +588,12 @@ ListUsers({
   relation: "viewer",
   user_filters: [{type: "user"}]
 })  --> {
-  users: ["user:jon"],
-  wildcard_types: []
+  "users": [
+    {
+      "type": "user",
+      "id": "jon"
+    }
+  ]
 }
 ```
 
@@ -589,8 +663,18 @@ ListUsers({
     }
   ]
 }) --> {
-  users: ["group:eng", "group:fga"],
-  wildcard_types: []
+  "users": [
+    {
+      "type": "group",
+      "id": "eng",
+      "relation": "member"
+    },
+    {
+      "type": "group",
+      "id": "fga",
+      "relation": "member"
+    }
+  ]
 }
 ```
 This example deviates from many of the examples above in that we expand all relationships for a specific object and relation (e.g. `document:1#viewer`) that are related to a given set of users or subject set (e.g. `group#member`).
@@ -782,7 +866,7 @@ ListUsers({
     }
   ]
 }) --> {
-  users: [
+  "users": [
     {
       user: "user:maria",
       resolved_paths: [
