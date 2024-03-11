@@ -291,7 +291,7 @@ ListUsers({
   ]
 }
 ```
-In example 1, there are two tuples establishing a typed wildcard, one for `user` and `employee`, both with `document:1#viewer`. But while expanding the ListUsers request we only return the `user` type in the `wildcard_types` property because it is the only tuple that matches the filters in the `user_filters`.
+In example 1, there are two tuples establishing a typed wildcard, one for `user` and `employee`, both with `document:1#viewer`. But while expanding the ListUsers request we only return the `user` typed public wildcard because it is the only tuple that matches the filters in the `user_filters`.
 
 
 **Example 2:**
@@ -868,7 +868,10 @@ ListUsers({
 }) --> {
   "users": [
     {
-      user: "user:maria",
+      user: {
+        "type": "user",
+        "id": "maria"
+      },
       resolved_paths: [
         {
           "object": "document:example",
@@ -877,7 +880,10 @@ ListUsers({
       ]
     },
     {
-      user: "user:will",
+      user: {
+        "type": "user",
+        "id": "will"
+      },
       resolved_paths: [
         {
           "object": "document:example",
@@ -886,7 +892,10 @@ ListUsers({
       ]
     },
     {
-      user: "user:andres",
+      user: {
+        "type": "user",
+        "id": "andres"
+      },
       resolved_paths: [
         {
           "object": "folder:x",
@@ -895,16 +904,31 @@ ListUsers({
       ]
     },
     {
-      user: "group:engineering",
+      user: {
+        "type": "group",
+        "id": "eng",
+        "relation": "member"
+      },
       resolved_paths: [
         {
           "object": "document:example",
           "relation": "viewer"
         }
       ]
+    },
+    {
+      user: {
+        "type": "user",
+        "wildcard": {}
+      },
+      resolved_paths: [
+        {
+          "object": "document:example",
+          "relatoin": "viewer"
+        }
+      ]
     }
   ],
-  wildcard_types: ["user"]
 }
 ```
 Two things are important to point out about this response:
@@ -921,7 +945,7 @@ Two things are important to point out about this response:
 
     - The set of users/subjects included in `group:engineering` have editor acces, and thus we find a resolution path stemming from `document:example#viewer` that leads to `document:example#viewer`. The Google Doc Share Dialog chooses to render group memberships such as this as the Google Group and the highest permission that set of subjects has, which is `viewer` in this case.
 
-3. The `user` type wildcard is returned in the `wildcard_types` portion of the response. This special treatment lends nicely to the Google Doc Share example, which has a visually unique treatment.
+3. The `user` type wildcard is returned as well, which lends nicely to the Google Doc Share example, which has a visually unique treatment of the wildcard. The client can take that wildcard response and render it specific to their needs.
 
 This response indicates to the Google Docs apps that viewer permissions to `document:example` have been explicitly granted to any object of type `user`, and then the app can use this to implement a link-based sharing mechanism.
 
