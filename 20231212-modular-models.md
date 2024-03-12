@@ -229,9 +229,9 @@ The OpenFGA server does not need to be changed, beyond supporting the new JSON f
 
 ### Type Extension
 
-With one of the main drivers behind modular models being to help reduce friction between teams working on a singular model it was decided that type extension should be included to allow extending types without the need for the owning team to take ownership of these relations. Moving forward, it should be feasible to allow restricting the usage of these relations to within the module they are extended within.
+With one of the main drivers behind modular models being to help reduce friction between teams working on a singular model it was decided that type extension should be included to allow extending types without the need for the owning team to take ownership of these relations. In the future, it would be possible to allow restricting the usage of these relations to within the module they are extended within.
 
-In order to support type extension there must be some restrictions on the usage to avoid any clashes or unexpected behavior:
+In order to support type extension there must be some restrictions on the usage to avoid any clashes or unexpected behavior. All the below examples are not allowed:
 
 * An extended type must exist
 ```python
@@ -280,9 +280,9 @@ extend type organization
 
 ### Conditions
 
-Similar to types, conditions defined in any module can be used throughout the modular model. Moving forward, it should be feasible to allow restricting the usage of these conditions to within the module they are extended within.
+Similar to types, conditions defined in any module can be used throughout the modular model. In the future, it would be possible to restrict the usage of these conditions to within the module they are extended within.
 
-In order to support this usage there are some restrictions in place
+In order to support this usage there are some restrictions in place. All the below examples are not allowed:
 
 * Conditions must be unique across the module project
 ```python
