@@ -209,11 +209,15 @@ Module information will be stored in the JSON representation of the model as met
 
 This metadata will be stored in the below structure, and will be stored as part of the existing `metadata` for types and relations, and a new `metadata` property will be added for conditions. File and module metadata will only be added to relations that originate from extended types and not to relations that come from the original type.
 
+The module name will be stored at the top level of the `metadata` object as we envisage that it will be important for future features such as FGA-on-FGA and will therefore become a native piece of the authorization model. The file will be stored under a new `source_info` object that may grow to include other source specific properties.
+
 ```json
 {
   ...,
-  "file": string,
-  "module": string
+  "module": string,
+  "source_info": {
+    "file": string
+  }
 }
 ```
 
@@ -229,7 +233,9 @@ For example the `organization` type from `core.module.fga` would look like below
       "admin": { ... },
       "can_create_space": {
         "module": "confluence",
-        "file": "confluence.module.fga"
+        "source_info": {
+          "file": "confluence.module.fga"
+        }
       },
       "can_create_project": {
         "module": "jira",
@@ -237,7 +243,9 @@ For example the `organization` type from `core.module.fga` would look like below
       }
     },
     "module": "core",
-    "file": "core.module.fga"
+    "source_info": {
+      "file": "core.module.fga"
+    }
   }
 }
 ```
