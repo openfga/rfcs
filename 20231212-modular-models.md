@@ -227,6 +227,81 @@ confluence.model.fga @atlassian/confluence
 
 The OpenFGA server does not need to be changed, beyond supporting the new JSON format and allowing schema version `1.2`. SDKs do not need to be changed beyond being refreshed to allow for the new Authorization Model type with the additional fields.
 
+### Type Extension
+
+With one of the main drivers behind modular models being to help reduce friction between teams working on a singular model it was decided that type extension should be included to allow extending types without the need for the owning team to take ownership of these relations. In the future, it would be possible to allow restricting the usage of these relations to within the module they are extended within.
+
+In order to support type extension there must be some restrictions on the usage to avoid any clashes or unexpected behavior. All the below examples are not allowed:
+
+* An extended type must exist
+```python
+module confluence
+
+extend type non-existent
+  relations
+    define can_create_project : user or admin
+```
+* A type can only be extended once per file
+```python
+module confluence
+
+extend type organization
+  relations
+    define can_create_project : user or admin
+
+extend type organization
+  relations
+    define can_delete_project : admin
+```
+* If the `extend` keyword is used then there must be relations declared
+
+```python
+module confluence
+
+extend type organization
+```
+* There cannot be any relations that would result in duplicates once the modular model has been compiled
+```python
+# confluence.module.fga
+module confluence
+
+extend type organization
+  relations
+    define can_create_project : user or admin
+```
+```python
+# jira.module.fga
+module jira
+
+extend type organization
+  relations
+    define can_create_project : user or admin
+```
+
+### Conditions
+
+Similar to types, conditions defined in any module can be used throughout the modular model. In the future, it would be possible to restrict the usage of these conditions to within the module they are extended within.
+
+In order to support this usage there are some restrictions in place. All the below examples are not allowed:
+
+* Conditions must be unique across the module project
+```python
+# confluence.module.fga
+module confluence
+
+condition non_expired_grant(current_time: timestamp, grant_time: timestamp, grant_duration: duration) {
+  current_time < grant_time + grant_duration
+}
+```
+```python
+# jira.module.fga
+module jira
+
+condition non_expired_grant(current_time: timestamp, grant_time: timestamp, grant_duration: duration) {
+  current_time < grant_time + grant_duration
+}
+```
+
 ## Other options evaluated
 
 ### Prefixing types with the module name
