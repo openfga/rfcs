@@ -239,7 +239,9 @@ For example the `organization` type from `core.module.fga` would look like below
       },
       "can_create_project": {
         "module": "jira",
-        "file": "jira.module.fga"
+        "source_info": {
+          "file": "jira.module.fga"
+        }
       }
     },
     "module": "core",
