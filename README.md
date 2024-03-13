@@ -9,8 +9,8 @@ Check out the PRs below to see and contribute to features the core team and comm
 | Feature                                                                                                                                          | PR                                              | Status            |
 |:-------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------------------------------|:------------------|
 | [ExpandedWatch API](https://github.com/openfga/rfcs/blob/expanded-watch-rfc/20220729-expandedWatch-api.md)                                       | [#4](https://github.com/openfga/rfcs/pull/4)    | Draft             |
-| [Add type restrictions to DSL Syntax](https://github.com/openfga/rfcs/blob/type-restriction-dsl/20221012-add-type-restrictions-to-dsl-syntax.md) | [#7](https://github.com/openfga/rfcs/pull/7)    | Open for Comments |
 | [Endpoint Authorizations](https://github.com/openfga/rfcs/blob/fe5eaeffc2230d162297296d4d3388fe4d065d44/20221103-endpoint-authz.md)              | [#10](https://github.com/openfga/rfcs/pull/10)  | Open for Comments |
+| [Cloud IAM Authorizations](https://github.com/openfga/rfcs/blob/d3ada983314e59d91a2afa2b8ef06eac7884c198/20230729-db-cloud-auth.md)              | [#13](https://github.com/openfga/rfcs/pull/13)  | Open for Comments |
 
 ---
 
@@ -20,6 +20,8 @@ Check out the PRs below to see and contribute to features the core team and comm
 | [ListObjects API](https://github.com/openfga/rfcs/blob/main/20220714-listObjects-api.md)                                               | Accepted |
 | [Add Type Restrictions to the JSON Syntax](https://github.com/openfga/rfcs/blob/main/20220831-add-type-restrictions-to-json-syntax.md) | Accepted |
 | [ListUsers](https://github.com/openfga/rfcs/blob/main/20231214-listUsers-api.md)                                                       | Accepted |
+| [Add type restrictions to DSL Syntax](https://github.com/openfga/rfcs/blob/main/20221012-add-type-restrictions-to-dsl-syntax.md)       | Accepted |
+| [Add type restrictions to JSON Syntax](https://github.com/openfga/rfcs/blob/main/20220831-add-type-restrictions-to-json-syntax.md)     | Accepted |
 
 ---
 
