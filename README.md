@@ -22,6 +22,7 @@ Check out the PRs below to see and contribute to features the core team and comm
 | [ListUsers](https://github.com/openfga/rfcs/blob/main/20231214-listUsers-api.md)                                                       | Accepted |
 | [Add type restrictions to DSL Syntax](https://github.com/openfga/rfcs/blob/main/20221012-add-type-restrictions-to-dsl-syntax.md)       | Accepted |
 | [Add type restrictions to JSON Syntax](https://github.com/openfga/rfcs/blob/main/20220831-add-type-restrictions-to-json-syntax.md)     | Accepted |
+| [Modular Models](https://github.com/openfga/rfcs/blob/main/20231212-modular-models.md) | Accepted
 
 ---
 
