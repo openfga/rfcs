@@ -4,7 +4,7 @@ OpenFGA's goal is to solve authorization for any software project, regardless of
 
 ## Fast, Flexible Authorization, at any scale
 
-OpenFGA is a versatile low latency authorization database that can scale to global deployments of any size. In order to maintain this vision, it should be only be concerned with fine-grained authorization. It is not a universal datastore, it is not a secret manager, it is not a search engine.
+OpenFGA is a versatile low latency authorization database that can scale to global deployments of any size. In order to maintain this vision, it should be only be concerned with fine-grained authorization. It is not a universal datastore, it is not a secret manager, it is not a search engine. Furthermore, it should strive to be fast, but not at the expense of correctness. In other words: if a request takes too long, it can be purposely slowed down, but it should eventually be served.
 
 ## Versatility
 
