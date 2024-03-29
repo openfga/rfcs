@@ -6,11 +6,12 @@ Want to suggest a change to the OpenFGA project? That's great! We follow an RFC 
 
 Check out the PRs below to see and contribute to features the core team and community are currently evaluating. Let us know your feedback with emojis and comments.
 
-| Feature                                                                                                                                          | PR                                              | Status            |
-|:-------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------------------------------|:------------------|
-| [ExpandedWatch API](https://github.com/openfga/rfcs/blob/expanded-watch-rfc/20220729-expandedWatch-api.md)                                       | [#4](https://github.com/openfga/rfcs/pull/4)    | Draft             |
-| [Endpoint Authorizations](https://github.com/openfga/rfcs/blob/fe5eaeffc2230d162297296d4d3388fe4d065d44/20221103-endpoint-authz.md)              | [#10](https://github.com/openfga/rfcs/pull/10)  | Open for Comments |
-| [Cloud IAM Authorizations](https://github.com/openfga/rfcs/blob/d3ada983314e59d91a2afa2b8ef06eac7884c198/20230729-db-cloud-auth.md)              | [#13](https://github.com/openfga/rfcs/pull/13)  | Open for Comments |
+| Feature                                                                                                                             | PR                                             | Status            |
+|:------------------------------------------------------------------------------------------------------------------------------------|:-----------------------------------------------|:------------------|
+| [Queries with Usersets](https://github.com/openfga/rfcs/blob/queries-with-usersets/20240328-queries-with-usersets.md)               | [#23](https://github.com/openfga/rfcs/pull/23) | Draft             |
+| [ExpandedWatch API](https://github.com/openfga/rfcs/blob/expanded-watch-rfc/20220729-expandedWatch-api.md)                          | [#4](https://github.com/openfga/rfcs/pull/4)   | Draft             |
+| [Endpoint Authorizations](https://github.com/openfga/rfcs/blob/fe5eaeffc2230d162297296d4d3388fe4d065d44/20221103-endpoint-authz.md) | [#10](https://github.com/openfga/rfcs/pull/10) | Open for Comments |
+| [Cloud IAM Authorizations](https://github.com/openfga/rfcs/blob/d3ada983314e59d91a2afa2b8ef06eac7884c198/20230729-db-cloud-auth.md) | [#13](https://github.com/openfga/rfcs/pull/13) | Open for Comments |
 
 ---
 
