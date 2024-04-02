@@ -17,9 +17,10 @@ This is a proposal to change the outcome of query APIs (specifically, Check and 
 [definitions]: #definitions
 
 - **Object**: is of the form `objectType:objectId`.
-- **User**: is a specific object, such as `employee:maria` or `document:1`.
-- **Userset**: is a set of objects. Usersets are represented via this notation: `objectType:objectId#relation`. For example, `document:1#viewer` represents the set of objects that are related to `document:1` as `viewer`. There is a special userset of form `objectType:*` that denotes all objects of the given `objectType`.
-- **Tuple**: is a relation in the system. Tuples are represented via this notation: `object#relation@(user|userset)`. Writing a tuple such as `document:1#viewer@employee:*` means that every object of type `employee` has `viewer` relation to `document:1`.
+- **User**: is a specific object such as `employee:maria` or `document:1`, or a userset, or a wildcard (described below).
+- **Userset**: is a set of objects that have a specific relation. Usersets are represented via this notation: `objectType:objectId#relation`. For example, `document:1#viewer` represents the set of objects that are related to `document:1` as `viewer`.
+- **Wildcard user**: an object with the form `objectType:*` that denotes all objects of the given `objectType`.
+- **Tuple**: is a relation in the system. Tuples are represented via this notation: `object#relation@(user|userset|wildcard)`. Writing a tuple such as `document:1#viewer@employee:*` means that every object of type `employee` has `viewer` relation to `document:1`.
 
 # Motivation
 [motivation]: #motivation
@@ -82,6 +83,7 @@ Notice that we account for the `group:eng#member` relationship for `user:jon`, b
 
 | object_type | object_id | relation | subject_type | subject_id | subject_relation |
 |-------------|-----------|----------|--------------|------------|------------------|
+| group       | eng       | member   | group        | eng        | member           |
 | group       | eng       | member   | group        | fga        | member           |
 | group       | fga       | member   | group        | fga        | member           |
 
@@ -95,7 +97,7 @@ Then our join would return:
 # What it is
 [what-it-is]: #what-it-is
 
-We are introducing the notion of "implicit" tuples, i.e. tuples that were never explicitly written in the system but that will be accepted as true facts. These facts stem from applying equivalence of sets to the authorization model.
+We are introducing the notion of invariants in a model, i.e. facts that were never explicitly written in the system but that will be accepted as true. These facts stem from applying equivalence of sets to the authorization model.
 
 For example, given this authorization model:
 
@@ -153,7 +155,7 @@ This proposal doesn't entail any migration of data. However, it will require a t
 # Drawbacks
 [drawbacks]: #drawbacks
 
-- Confusion for application developers. So far, developers have largely assumed that a Check returns `{allowed: true}` if and only if there is a tuple or tuples in the system saying so. With this proposal we are introducing the idea of "implicit" tuples. 
+- Confusion for application developers. So far, developers have largely assumed that a Check returns `{allowed: true}` if and only if there is a tuple or tuples in the system saying so. With this proposal we are introducing the idea of invariant relationships.
 
 # Alternatives
 [alternatives]: #alternatives
@@ -168,9 +170,13 @@ N/A
 # Unresolved Questions
 [unresolved-questions]: #unresolved-questions
 
-- Given that the userset `document:1#viewer` is defined as the set that has the `viewer` relation with `document:1`, should we block application developers from writing the tuple `document:1#viewer@document:1#viewer` since the Write will become irrelevant? And if yes, what error should we return?
+- Given that the userset `document:1#viewer` is defined as the set that has the `viewer` relation with `document:1`, should we block application developers from writing the tuple `document:1#viewer@document:1#viewer` since the Write will become irrelevant? And if yes:
+  - What error should we return?
+  - What do we do with tuples like these that have already been written?
 - How does this affect the [Read API](https://openfga.dev/api/service#/Relationship%20Tuples/Read)? The documentation says 
     > The Read API will return the tuples for a certain store that match a query filter specified in the body of the request. [...] it only returns relationship tuples that are stored in the system and satisfy the query.
 
-    If a developer calls `Read(user=document:1#viewer, relation:viewer, object=document:1)` today, unless they previously wrote the tuple `document:1 # viewer @ document:1#viewer`, this query returns an empty result, even though the tuple will be assumed to exist.
+    If a developer calls `Read(user=document:1#viewer, relation:viewer, object=document:1)` today, unless they previously wrote the tuple `document:1 # viewer @ document:1#viewer`, this query returns an empty result, even though the query is an invariant that holds true.
+  - Should we update documentation to say that invariants are not returned?
 - How does this affect the [Expand API](https://openfga.dev/api/service#/Relationship%20Queries/Expand)? 
+  - Should we update documentation to say that invariants are not returned?
