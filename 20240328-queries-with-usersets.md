@@ -27,7 +27,7 @@ This is a proposal to change the outcome of query APIs (specifically, Check and 
 
 ## Correctness
 
-The userset `document:1#viewer` is defined as the set that has the `viewer` relation with `document:1`. Therefore, intuitively, `Check(object=document:1, relation=viewer, user=document:1#viewer)` should always return `{allowed=true}`.
+The userset `objectType:objectId#relation` is defined as the set that has the `relation` relation with `objectType:objectId`. Therefore, intuitively, `Check(objectType:objectId#relation@objectType:objectId#relation)` should always return `{allowed=true}`, irrespective of the relation definitions and the tuples in the store. 
 
 ## Consistency between APIs
 
@@ -143,9 +143,15 @@ https://play.fga.dev/stores/create/?id=01HT3QDCENG2D0A3KS0CNQSTAJ.
 # How it Works
 [how-it-works]: #how-it-works
 
-Check API involves solving a parent problem that may contain subproblems. The implementation of this proposal will be that when solving the parent problem or each subproblem, if the problem is of the form `objectType:objectId # relation @ objectType:objectId#relation`, then we will immediately return `{allowed=true}`.
+Check API involves solving a parent problem that may contain subproblems. The implementation of this proposal will be that when solving the parent problem or each subproblem, if the problem is of the form `objectType:objectId # relation @ objectType:objectId#relation`, then we will immediately return `{allowed=true}`. The same idea will apply to ListObjects and ListUsers APIs.
 
-The same idea will apply to ListObjects and ListUsers APIs.
+Write API will be changed too. Given that the userset `objectType:objectId#relation` is defined as the set that has the `relation` relation with `objectType:objectId`, we will block application developers from writing the tuple `objectType:objectId # relation @ objectType:objectId#relation` and return an appropriate error. This is to prevent confusion and to prevent useless tuples from being stored. 
+
+Tuples of this form that have been written already will be kept, but we will allow developers to delete them.
+
+Read API will not be modified and will continue to only return tuples that have been explicitly written.
+
+Expand API will not be modified. It currently does not return the invariants, to prevent loops.
 
 # Migration
 [migration]: #migration
@@ -170,13 +176,4 @@ N/A
 # Unresolved Questions
 [unresolved-questions]: #unresolved-questions
 
-- Given that the userset `document:1#viewer` is defined as the set that has the `viewer` relation with `document:1`, should we block application developers from writing the tuple `document:1#viewer@document:1#viewer` since the Write will become irrelevant? And if yes:
-  - What error should we return?
-  - What do we do with tuples like these that have already been written?
-- How does this affect the [Read API](https://openfga.dev/api/service#/Relationship%20Tuples/Read)? The documentation says 
-    > The Read API will return the tuples for a certain store that match a query filter specified in the body of the request. [...] it only returns relationship tuples that are stored in the system and satisfy the query.
-
-    If a developer calls `Read(user=document:1#viewer, relation:viewer, object=document:1)` today, unless they previously wrote the tuple `document:1 # viewer @ document:1#viewer`, this query returns an empty result, even though the query is an invariant that holds true.
-  - Should we update documentation to say that invariants are not returned?
-- How does this affect the [Expand API](https://openfga.dev/api/service#/Relationship%20Queries/Expand)? 
-  - Should we update documentation to say that invariants are not returned?
+N/A
