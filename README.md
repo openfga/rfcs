@@ -18,7 +18,6 @@ Check out the PRs below to see and contribute to features the core team and comm
 | Feature                                                                                                                                |   Status |
 |:---------------------------------------------------------------------------------------------------------------------------------------|---------:|
 | [ListObjects API](https://github.com/openfga/rfcs/blob/main/20220714-listObjects-api.md)                                               | Accepted |
-| [Add Type Restrictions to the JSON Syntax](https://github.com/openfga/rfcs/blob/main/20220831-add-type-restrictions-to-json-syntax.md) | Accepted |
 | [ListUsers](https://github.com/openfga/rfcs/blob/main/20231214-listUsers-api.md)                                                       | Accepted |
 | [Add type restrictions to DSL Syntax](https://github.com/openfga/rfcs/blob/main/20221012-add-type-restrictions-to-dsl-syntax.md)       | Accepted |
 | [Add type restrictions to JSON Syntax](https://github.com/openfga/rfcs/blob/main/20220831-add-type-restrictions-to-json-syntax.md)     | Accepted |
