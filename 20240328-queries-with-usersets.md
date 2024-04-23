@@ -3,8 +3,8 @@
 - Name: Queries with usersets
 - Start Date: 2024-03-28
 - Author(s): @miparnisari
-- Status: Draft
-- RFC Pull Request: (leave blank)
+- Status: Approved
+- RFC Pull Request: https://github.com/openfga/rfcs/pull/23
 - Relevant Issues: n/a
 - Supersedes: n/a
 

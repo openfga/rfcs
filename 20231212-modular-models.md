@@ -6,7 +6,7 @@
 - **Start Date**: 2023-12-12
 - **Last Updated Date**: 2024-02-18
 - **Author(s)**: [aaguiarz](https://github.com/aaguiarz)
-- **Status**: Draft 
+- **Status**: Approved 
 - **PR Link**: https://github.com/openfga/rfcs/pull/14/files
 - **Relevant Issues**:
 - **Supersedes**: N/A
