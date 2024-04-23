@@ -5,7 +5,7 @@
 - **Name**: Add Type Restrictions to the DSL Syntax
 - **Start Date**: 2022-10-12
 - **Author(s)**: [craigpastro](https://github.com/craigpastro)
-- **Status**: Draft <!-- Acceptable values: Draft, Approved, On Hold, Superseded -->
+- **Status**: Approved
 - **RFC Pull Request**: <https://github.com/openfga/rfcs/pull/8>
 - **Relevant Issues**:
 - **Supersedes**: N/A
