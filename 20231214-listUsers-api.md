@@ -41,15 +41,15 @@ More specifically, given an [object](https://openfga.dev/docs/concepts#what-is-a
 ## Definitions
 [definitions]: #definitions
 
-* You may see references to strings formatted as **`object#relation@user`** in this document. This is short-hand notation for representing an OpenFGA Relationship Tuple. For example, `group:eng#member@user:jon` or `document:1#viewer@group:eng#member` etc.. You may also see strings formatted as `objectType#relation`. This is short-hand notation for representing a specific relation defined on some object type. For example, `document#viewer` represents the viewer relationship defined on the document object type.
+* You may see references to strings formatted as **`object#relation@user`** in this document. This is short-hand notation for representing an OpenFGA Relationship Tuple. For example, `group:eng#member@user:jon` or `document:1#viewer@group:eng#member` etc. You may also see strings formatted as `objectType#relation`. This is short-hand notation for representing a specific relation defined on some object type. For example, `document#viewer` represents the `viewer` relation defined on the `document` object type.
 
 * **Expansion** - refers to the process of iteratively traversing the graph of relationships that are realized through both an OpenFGA model AND the relationship tuples that exist in the store.
 
 * **Forward expansion** - refers to expansion of the OpenFGA relationship graph in a forward form. That is, starting at an object and relation, walk the graph of relationships in a directed way towards a user of some specific type by following paths that would lead through some target relation.
 
-* **Reverse expansion** - refers to expansion of the OpenFGA relationship grpah in a backwards form. That is, starting at a user of a specific type, walk the graph of relationships in a directed way towards an object of some specific type by following paths that would lead through some target relation.
+* **Reverse expansion** - refers to expansion of the OpenFGA relationship graph in a backwards form. That is, starting at a user of a specific type, walk the graph of relationships in a directed way towards an object of some specific type by following paths that would lead through some target relation.
 
-* **Concrete/terminal objects** - a concrete or terminal object refers to a singular or specific resource of a given object type and id. A concrete object cannot be expanded any further (see Expansion above). It can be conceptualized as a leaf-node in a graph. Concrete objects differ from usersets, because usersets refer to a collection of zero or more concrete objects. For example `user:jon` is a concrete object while `group:eng#member` is a userset which may expand to multiple concrete objects such as `user:jon`, `user:andres`, etc..
+* **Concrete/terminal objects** - a concrete or terminal object refers to a singular or specific resource of a given object type and id. A concrete object cannot be expanded any further (see Expansion above). It can be conceptualized as a leaf node in a graph. Concrete objects differ from usersets, because usersets refer to a collection of zero or more concrete objects. For example `user:jon` is a concrete object while `group:eng#member` is a userset which may expand to multiple concrete objects such as `user:jon`, `user:andres`, etc.
 
 * **Userset** - A userset refers to a set of zero or more concrete objects that are the subjects that a relationship expands to. See our Concepts page on [Users](https://openfga.dev/docs/concepts#what-is-a-user) for more info.
 
@@ -57,12 +57,12 @@ More specifically, given an [object](https://openfga.dev/docs/concepts#what-is-a
 ## Motivation
 [motivation]: #motivation
 
-Developers using OpenFGA want to look up all of the users that have a particular relationship with an object. Currently, the Read API is inadequate for listing users because it can only display users who have direct access to an object but not with users that have derived access through expansion.
+Developers using OpenFGA want to look up all of the users that have a particular relationship with an object. Currently, the Read API is inadequate for listing users because it can only return users who have direct access to an object, but not users that have derived access through expansion.
 
 ### Use Cases
 
 - **UIs** - Display the users that a resource has been shared with. Ex: the "Share" dialog in Google Docs.
-- **Notifications** - Notify all users who relate to a specific object. Ex: send and email to editors of a document when it has been updated.
+- **Notifications** - Notify all users who relate to a specific object. Ex: email all editors of a document after it has been updated.
 
 ### Expected Outcome
 
@@ -73,7 +73,7 @@ Two new core APIs are added to the [OpenFGA API](https://github.com/openfga/api)
 
 Given an `object`, `relation`, and one or more user/subject provided filters, return the concrete/terminal users or sets of users matching at least one of the user filters that have that relationship with the object.
 
-More formally, given the following model and relationship tuples:
+For example, given the following model and relationship tuples:
 
 ```
 model
@@ -165,7 +165,7 @@ ListUsers({
 ```
 
 ## API Semantics
-Unless otherwise noted, the intent is for the `ListUsers` and `StreamedListUsers` APIs to behave similarly with the `ListObjects` and `StreamedListObjects` API. This is to encourage more uniformity in the API experience. The API and server configuration should reflect similarities, the error propagation strategy should strive to be the same, and any limits and/or deadline behaviors should strive to be identical unless there is a compelling reason to have an exception. We may find such compelling reasons as we dig into the implementation details further, but it's not obvious why/if it would have to differ at this time.
+Unless otherwise noted, the intent is for the `ListUsers` and `StreamedListUsers` APIs to behave similarly to the `ListObjects` and `StreamedListObjects` API. This is to encourage more uniformity in the API experience. The API and server configuration should reflect similarities, the error propagation strategy should strive to be the same, and any limits and/or deadline behaviors should strive to be identical unless there is a compelling reason to have an exception. We may find such compelling reasons as we dig into the implementation details further, but it's not obvious why/if it would have to differ at this time.
 
 ## API and Server Configuration Changes
 - Introduce the new protobuf API definitions.
@@ -191,20 +191,31 @@ Unless otherwise noted, the intent is for the `ListUsers` and `StreamedListUsers
     // all user result(s) up to the maximum limit.
     message ListUsersResponse {
       repeated User users = 1;
+      repeated User excluded_users = 2;
     }
 
     message User {
       oneof user {
         Object object = 1;
         UsersetUser userset = 2;
-        Wildcard wildcard = 3;
+        TypedWildcard wildcard = 3;
       }
+    }
+  
+    message Object {
+      string type = 1;
+      string id = 2;
     }
 
     message UsersetUser {
       string type = 1;
       string id = 2;
       string relation = 3;
+    }
+  
+    message TypedWildcard {
+      string type = 1;
+      Wildcard wildcard = 2;
     }
 
     message ListUsersFilter {
@@ -213,7 +224,7 @@ Unless otherwise noted, the intent is for the `ListUsers` and `StreamedListUsers
     }
     ```
     
-    The `user_filters` defines an array of `ListUsersFilter` (e.g. type restriction definitions) that will be used to control the expansion. As ListUsers expansion occurs, if we find a user/subject that meets one of the user_filters type restriction(s), then we include the result in the response and stop further expansion on that subproblem. Once we've found a result meeting the filter criteria we don't explore that subproblem any further, even if it would lead to more results matching the other filters in the `user_filters` (see Example 5 below for further details).
+    The `ListUsersFilter` is an array of type restriction definitions that will be used to control the expansion. As ListUsers expansion occurs, if we find a user/subject that meets one of the `user_filters` type restriction(s), then we include the result in the response and stop further expansion on that subproblem. Once we've found a result meeting the filter criteria we don't explore that subproblem any further, even if it would lead to more results matching the other filters in the `user_filters` (see Example 5 below for further details).
 
     Initially `user_filters` will be limited to 1 filter (array of size 1), but we've planned on allowing the client to filter by multiple user filters in the future (as the community sees the need).
 
@@ -245,7 +256,7 @@ Unless otherwise noted, the intent is for the `ListUsers` and `StreamedListUsers
 
   - `--listUsers-deadline (duration)` - the timeout deadline for serving ListUsers or StreamedListUsers requests (default 3s)
 
-  - `--max-concurrent-reads-for-list-objects (uint32)` - the maximum allowed number of concurrent datastore reads in a single ListUsers or StreamedListUsers query
+  - `--max-concurrent-reads-for-list-users (uint32)` - the maximum allowed number of concurrent datastore reads in a single ListUsers or StreamedListUsers query
 
 ### Limits and Deadlines
 The `ListUsers` API is a [unary RPC](https://grpc.io/docs/what-is-grpc/core-concepts/#unary-rpc) while the `StreamedListUsers` is a [server-streaming RPC](https://grpc.io/docs/what-is-grpc/core-concepts/#server-streaming-rpc). Because of these semantic differences we have different behaviors around limits and deadlines. 
@@ -260,18 +271,24 @@ ListUsers and StreamedListUsers should strive to implement error handling semant
 ### Typed Public Wildcard
 
 ```go
+model
+  schema 1.1
 type user
 type employee
 
 type document
   relations
     define viewer: [user:*, employee:*]
+    define blocked: [user]
+    define not_blocked: [user:*] but not blocked
 ```
 
-| object     | relation | user            |
-|------------|----------|-----------------|
-| document:1 | viewer   | user:*          |
-| document:1 | viewer   | employee:*      |
+| object     | relation    | user       |
+|------------|-------------|------------|
+| document:1 | viewer      | user:*     |
+| document:1 | viewer      | employee:* |
+| document:2 | not_blocked | user:*     | 
+| document:2 | blocked     | user:anne  | 
 
 **Example 1:**
 
@@ -324,6 +341,32 @@ ListUsers({
 }
 ```
 However, in example 2, both `user` and `employee` typed wildcard are returned because those user types were specified in the `user_filters` input field.
+
+**Example 3**
+
+```
+ListUsers({
+    object: "document:2",
+    relation: "not_blocked",
+    user_filters: [ { type: "user" } ]
+}) --> 
+{
+  "users": [
+    {
+      "type": "user",
+      "wildcard": {}
+    }
+  ],
+   "excluded_users": [
+    {
+      "type": "user",
+      "id": "anne"
+    }
+  ]
+}
+```
+
+`document:2` is publicly accessible, but `user:anne` is specifically blocked, so both are returned.
 
 ## How it Works
 [how-it-works]: #how-it-works
@@ -992,8 +1035,4 @@ https://github.com/jon-whit/openfga/blob/168986a51aae8281499aeb1b643d818621b70a0
 ## Open Questions
 [open-questions]: #open-questions
 
-- What uses cases would this help you solve? See: [use cases](#use-cases)
-
-- What parts of the design do you expect to be resolved before this gets merged?
-
-- What related issues do you consider out of scope for this RFC that could be addressed in the future independently of the solution that comes out of this RFC?
+N/A
