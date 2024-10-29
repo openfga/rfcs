@@ -27,6 +27,7 @@ For example, when deploying applications in development/staging environments a n
 
   - It should be possible to upgrade to OpenFGA version that implements this feature without downtime.
   - The OpenFGA [ReadAuthorizationModels endpoint](https://openfga.dev/api/service#/Authorization%20Models/ReadAuthorizationModels) endpoint should support filtering by name. 
+  - The model name should be unique per store, not unique per OpenFGA instance.
 
 ## Proposed Solution
 
