@@ -14,11 +14,11 @@ repository:
   accepts-automated-change-request: true
   no-third-party-packages: true
   core-team:
-  - name: Andres Aguiar
-    affiliation: Okta
-    email: andres.aguiar@okta.com
-    social: https://github.com/aaguiarz
-    primary: true
+    - name: Andres Aguiar
+      affiliation: Okta
+      email: andres.aguiar@okta.com
+      social: https://github.com/aaguiarz
+      primary: true
 
   license:
     url: https://raw.githubusercontent.com/openfga/rfcs/main/LICENSE
