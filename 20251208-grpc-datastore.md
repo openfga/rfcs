@@ -4,7 +4,7 @@
 - Start Date: 2025-12-08
 - Author: @mihai-turdean
 - Status: Draft
-- RFC Pull Request:
+- RFC Pull Request: https://github.com/openfga/rfcs/pull/32
 - Relevant Issues: n/a
 - Supersedes: n/a
 
