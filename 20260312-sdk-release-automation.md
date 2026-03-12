@@ -549,4 +549,4 @@ The following are valuable improvements that can be pursued independently after 
 
 - **Publishing to GitHub Packages Registry (GPR):** Publish SDK artifacts to GPR in addition to the primary language registries (npm, PyPI, Maven Central, NuGet, pkg.go.dev).
 
-- **Pre-release versioning:** The workflow supports pre-release increments in principle via the `explicit` bump type, but the exact UX for triggering pre-release versions (e.g., `1.0.0-beta.1`) via the `workflow_dispatch` UI can be refined during the pilot.
+- **Pre-release versioning:** The workflow supports pre-release increments in principle via the `explicit` bump type, but the exact UX for triggering pre-release versions (e.g., `1.0.0-beta.1`) might differ across SDKs and their indivdual registries. So, There might have to be constraints or checks on allowed values for these.
