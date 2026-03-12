@@ -505,7 +505,7 @@ The PR title validation workflow described in [Conventional Commits Validation](
 Build a fully custom workflow using `keep-a-changelog-action` and per-repo `bump-version.sh` scripts.
 
 - **Pros:** Total control over every step; no external tool dependency; preserves Keep a Changelog format.
-- **Cons:** Higher maintenance burden; custom scripts for each language; no automatic changelog generation from commits. Maintainence of the custom scripts with the SDKs is a manual process.
+- **Cons:** Higher maintenance burden; custom scripts for each language; no automatic changelog generation from commits. Maintenance of the custom scripts with the SDKs is a manual process.
 
 ### Release-it
 
@@ -549,4 +549,4 @@ The following are valuable improvements that can be pursued independently after 
 
 - **Publishing to GitHub Packages Registry (GPR):** Publish SDK artifacts to GPR in addition to the primary language registries (npm, PyPI, Maven Central, NuGet, pkg.go.dev).
 
-- **Pre-release versioning:** The workflow supports pre-release increments in principle via the `explicit` bump type, but the exact UX for triggering pre-release versions (e.g., `1.0.0-beta.1`) might differ across SDKs and their indivdual registries. So, There might have to be constraints or checks on allowed values for these.
+- **Pre-release versioning:** The workflow supports pre-release increments in principle via the `explicit` bump type, but the exact UX for triggering pre-release versions (e.g., `1.0.0-beta.1`) might differ across SDKs and their individual registries, so there might need to be constraints or checks on allowed values for these.
