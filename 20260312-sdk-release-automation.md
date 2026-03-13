@@ -126,12 +126,14 @@ This proposal introduces a two-phase release workflow for all OpenFGA SDKs, buil
 
 ### The Release PR Model
 
-This proposal uses the **Release PR model** (as opposed to a direct-push model). The key properties are:
+This proposal uses the **Release PR model** (as opposed to a direct-push model) for the standard release flow. The key properties are:
 
-- **No branch protection bypass required.** The GitHub App acts as a standard contributor; no actor can modify `main` without at least one peer approval.
+- **Branch protection–friendly by default.** The GitHub App acts as a standard contributor; in the normal flow, no actor modifies `main` without at least one peer approval on the Release PR.
 - **Reviewable diff.** The changelog and version bump are visible in a PR before the tag is ever created.
 - **Audit trail.** The PR provides a permanent, reviewable history of who approved the release and what the changelog diff contained.
 - **Consistent with team norms.** The release goes through the same PR review process as any other code change.
+
+> **Note:** For explicit or non-auto version overrides, the workflow currently pushes an empty `Release-As` commit directly to `main` using the `github-actions[bot]` identity (not the GitHub App). If branch protection rules require all changes to go through a PR, you must grant an exception for `github-actions[bot]` to allow this direct push, or implement the override via a PR branch instead. See [Release Please documentation](https://github.com/googleapis/release-please?tab=readme-ov-file#how-do-i-change-the-version-number) for more details on version overrides and their limitations in manifest mode.
 
 ### Version Bumping with `x-release-please-version`
 
