@@ -21,6 +21,7 @@
 - [Alternatives](#alternatives)
 - [Prior Art](#prior-art)
 - [Additional Enhancements](#additional-enhancements)
+- [Reusable Workflow Across the Organisation](#reusable-workflow-across-the-organisation)
 
 ## Summary
 [summary]: #summary
@@ -594,6 +595,76 @@ When a Release PR is merged, the merge commit message starts with `chore(release
 ### Consistency via sdk-generator
 
 The release workflow, Release Please configuration, and Conventional Commits validation check will be **templated in the [sdk-generator](https://github.com/openfga/sdk-generator)** and applied uniformly to all SDK repositories. This ensures that any improvements to the release process propagate automatically to every SDK.
+
+### Reusable Workflow Across the Organisation
+
+Rather than duplicating the full `release-please.yml` into every SDK repository, the workflow can be centralised once and called from each repo using GitHub's [`workflow_call`](https://docs.github.com/en/actions/using-workflows/reusing-workflows) trigger. This is the natural complement to the sdk-generator templating approach: the config files (`release-please-config.json`, `.release-please-manifest.json`, version markers) remain per-repo, while the workflow logic lives in one place.
+
+**Central repository** (likely `openfga/sdk-generator`) — define the reusable workflow:
+
+```yaml
+# .github/workflows/release-please.yml
+on:
+  workflow_call:
+    inputs:
+      bump-type:
+        description: 'Version bump type (auto/patch/minor/major/explicit)'
+        required: false
+        type: string
+        default: 'auto'
+      release-version:
+        description: 'Explicit version (e.g. 1.2.3 or 1.4.0-beta.1)'
+        required: false
+        type: string
+    secrets:
+      APP_ID:
+        required: true
+      APP_PRIVATE_KEY:
+        required: true
+
+jobs:
+  release-please:
+    # ... full job body as defined in the Workflow Configuration section above
+```
+
+**Each SDK repository** — replace the full workflow with a thin caller:
+
+```yaml
+# .github/workflows/release-please.yml
+name: release-please
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump-type:
+        required: false
+        type: choice
+        default: 'auto'
+        options: [auto, patch, minor, major, explicit]
+      release-version:
+        required: false
+        type: string
+
+jobs:
+  release:
+    uses: openfga/sdk-generator/.github/workflows/release-please.yml@main
+    with:
+      bump-type: ${{ inputs.bump-type || 'auto' }}
+      release-version: ${{ inputs.release-version || '' }}
+    secrets:
+      APP_ID: ${{ secrets.APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+```
+
+Key points:
+
+- The central workflow **must** have `workflow_call` as a trigger — this is what makes it callable from other repositories.
+- Reference the central workflow as `org/repo/.github/workflows/file.yml@ref`. Pin to a tag or commit SHA (e.g. `@v1`) in production callers rather than `@main` for stability.
+- **Secrets must be explicitly forwarded** via the `secrets:` block — they are not inherited automatically across repositories.
+- The `release` staging branch, `release-please-config.json`, `.release-please-manifest.json`, and all `x-release-please-version` markers still live in **each individual SDK repository** — only the workflow logic is centralised.
+- Any update to the shared workflow (e.g. a new step, a security fix, a new bump-type option) propagates to all callers immediately on the next run, without a PR to every SDK repo.
 
 ## Failure Modes and Rollback Procedures
 [failure-modes-and-rollback-procedures]: #failure-modes-and-rollback-procedures
