@@ -15,6 +15,7 @@
 - [Motivation](#motivation)
 - [What it is](#what-it-is)
 - [How it Works](#how-it-works)
+- [Security](#security)
 - [Failure Modes and Rollback Procedures](#failure-modes-and-rollback-procedures)
 - [Migration](#migration)
 - [Drawbacks](#drawbacks)
@@ -287,6 +288,8 @@ Example `.release-please-manifest.json`:
 
 ### GitHub Actions Workflow
 
+> **Note:** The section below describes the workflow design concepts. The production-ready implementation splits this into a reusable central workflow (in `openfga/sdk-generator`) and a thin per-repo caller. See [Reusable Workflow Across the Organisation](#reusable-workflow-across-the-organisation) for the full production workflows.
+
 The release workflow has two triggers:
 
 - **`push` to `main`** — the job only runs when the head commit message starts with `release` (the Release PR merge commit title set by Release Please). All other pushes to `main` are skipped entirely.
@@ -550,9 +553,9 @@ Key details:
 
 Instead of using a Personal Access Token (PAT) tied to an individual maintainer, the workflow uses a **dedicated GitHub App** as its bot identity. This has several advantages:
 
-- **No long-lived secrets.** The App's static credentials (`APP_ID` + `APP_PRIVATE_KEY`) are exchanged for a short-lived token at the start of each workflow run via [`actions/create-github-app-token@v1`](https://github.com/actions/create-github-app-token). The token expires after the run completes, so the blast radius of any credential compromise is limited to a single run.
+- **No long-lived secrets.** The App's static credentials (`RELEASER_APP_CLIENT_ID` + `RELEASER_APP_PRIVATE_KEY`) are exchanged for a short-lived token at the start of each workflow run via [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token). The token expires after the run completes, so the blast radius of any credential compromise is limited to a single run.
 - **Least privilege.** The App is granted only `contents: write` and `pull-requests: write` — the minimum permissions needed to push the `Release-As` commit, manage the Release PR, and create tags.
-- **Verified commits.** Commits and tags made via the App token are automatically marked as **Verified** by GitHub, so no GPG key management is required.
+- **GPG-signed commits.** The `Release-As` commit pushed to the `release` staging branch is GPG-signed using a dedicated bot GPG key, imported via the `crazy-max/ghaction-import-gpg` action. Git is configured with `commit.gpgSign = true` and `tag.gpgSign = true` so every commit and tag produced by the bot carries a verifiable signature traceable to the project's published GPG key. Tags created by Release Please via the GitHub API additionally receive GitHub's own verified signature.
 - **Not tied to a person.** Unlike a PAT, the App identity is owned by the account or organization, not an individual. There is no risk of losing access when a maintainer rotates out.
 
 **Setup steps:**
@@ -562,9 +565,10 @@ Instead of using a Personal Access Token (PAT) tied to an individual maintainer,
 3. Grant **Contents: Read & write** and **Pull requests: Read & write** permissions.
 4. Generate a private key (`.pem` file).
 5. Install the App on the target repository (or repositories).
-6. Store `APP_ID` and `APP_PRIVATE_KEY` as repository (or organization) secrets.
+6. Store `RELEASER_APP_CLIENT_ID` and `RELEASER_APP_PRIVATE_KEY` as repository (or organization) secrets.
+7. Generate a dedicated GPG key for the releaser bot identity. Store the armored private key as `GPG_PRIVATE_KEY` and the passphrase as `GPG_PASSPHRASE`. Publish the corresponding public key so downstream users can verify signed artifacts.
 
-For organization migration, the same App can be installed across multiple repositories from a single place, making it easy to manage centrally.
+For organization migration, the same App and GPG key can be configured across multiple repositories from a single place, making it easy to manage centrally.
 
 ### End-to-End Flow
 
@@ -598,40 +602,249 @@ The release workflow, Release Please configuration, and Conventional Commits val
 
 ### Reusable Workflow Across the Organisation
 
-Rather than duplicating the full `release-please.yml` into every SDK repository, the workflow can be centralised once and called from each repo using GitHub's [`workflow_call`](https://docs.github.com/en/actions/using-workflows/reusing-workflows) trigger. This is the natural complement to the sdk-generator templating approach: the config files (`release-please-config.json`, `.release-please-manifest.json`, version markers) remain per-repo, while the workflow logic lives in one place.
+Rather than duplicating the full `release-please.yml` into every SDK repository, the workflow is centralised once in `openfga/sdk-generator` and called from each repo using GitHub's [`workflow_call`](https://docs.github.com/en/actions/using-workflows/reusing-workflows) trigger. The config files (`release-please-config.json`, `.release-please-manifest.json`, version markers) remain per-repo; the workflow logic lives in one place.
 
-**Central repository** (likely `openfga/sdk-generator`) — define the reusable workflow:
+**Central repository (`openfga/sdk-generator`)** — the reusable workflow (`release-please.yml`):
 
 ```yaml
-# .github/workflows/release-please.yml
+name: release-please
+
 on:
   workflow_call:
     inputs:
+      trigger-event:
+        description: >
+          The GitHub event that triggered the caller workflow (workflow_dispatch
+          or push). Pass github.event_name from the caller. Used internally to
+          distinguish manual dispatch from automated push-to-main runs.
+        required: true
+        type: string
       bump-type:
-        description: 'Version bump type (auto/patch/minor/major/explicit)'
+        description: >
+          Version bump type. Select 'explicit' to supply an exact version via
+          the 'release-version' field below. Select 'auto' to let
+          conventional-commits determine the bump automatically.
         required: false
         type: string
         default: 'auto'
       release-version:
-        description: 'Explicit version (e.g. 1.2.3 or 1.4.0-beta.1)'
+        description: >
+          Explicit version to release (e.g. 1.2.3 or 1.4.0-beta.1).
         required: false
         type: string
+        default: ''
     secrets:
-      APP_ID:
+      RELEASER_APP_CLIENT_ID:
         required: true
-      APP_PRIVATE_KEY:
+      RELEASER_APP_PRIVATE_KEY:
         required: true
+      GPG_PRIVATE_KEY:
+        required: true
+      GPG_PASSPHRASE:
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release-please:
-    # ... full job body as defined in the Workflow Configuration section above
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    if: inputs.trigger-event == 'workflow_dispatch' || inputs.trigger-event == 'push'
+
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name:        ${{ steps.release.outputs.tag_name }}
+      pr_number:       ${{ steps.release.outputs.pr_number }}
+
+    steps:
+      - name: Generate token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          client-id:   ${{ secrets.RELEASER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          token:       ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Prepare release branch
+        if: inputs.trigger-event == 'workflow_dispatch'
+        run: |
+          git fetch origin main
+          git checkout -B release origin/main
+          git push origin release --force
+
+      - name: Close stale release PRs
+        if: inputs.trigger-event == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh pr list \
+            --repo ${{ github.repository }} \
+            --head "release-please--branches--release" \
+            --state open \
+            --json number \
+            --jq '.[].number' \
+          | xargs -r -I{} gh pr close {} \
+              --repo ${{ github.repository }} \
+              --comment "Superseded by new release workflow run — closing stale release PR."
+
+          # Remove 'autorelease: pending' from merged PRs that were NOT merged
+          # into main to prevent duplicate-release attempts.
+          gh pr list \
+            --repo ${{ github.repository }} \
+            --label "autorelease: pending" \
+            --state merged \
+            --json number,baseRefName \
+            --jq '.[] | select(.baseRefName != "main") | .number' \
+          | xargs -r -I{} gh pr edit {} \
+              --repo ${{ github.repository }} \
+              --remove-label "autorelease: pending"
+
+      - name: Compute release-as version
+        id: compute-release-as
+        if: inputs.trigger-event == 'workflow_dispatch'
+        run: |
+          BUMP="${{ inputs.bump-type }}"
+          if [[ "$BUMP" == "patch" || "$BUMP" == "minor" || "$BUMP" == "major" ]]; then
+            CURRENT=$(jq -r '.["."]' .release-please-manifest.json | cut -d'-' -f1)
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+            if   [[ "$BUMP" == "major" ]]; then NEXT="$((MAJOR + 1)).0.0"
+            elif [[ "$BUMP" == "minor" ]]; then NEXT="${MAJOR}.$((MINOR + 1)).0"
+            else                               NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))"
+            fi
+            echo "value=$NEXT" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Import GPG key
+        id: import-gpg
+        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v7.0.0
+        with:
+          gpg_private_key:     ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase:          ${{ secrets.GPG_PASSPHRASE }}
+          git_user_signingkey: true
+          git_commit_gpgsign:  true
+
+      - name: Configure Git
+        run: |
+          git config user.name  openfga-releaser-bot
+          git config user.email ${{ steps.import-gpg.outputs.email }}
+          git config tag.gpgSign true
+
+      - name: Push Release-As commit
+        if: >-
+          inputs.trigger-event == 'workflow_dispatch' && (
+            (inputs.bump-type == 'explicit' && inputs.release-version != '') ||
+            inputs.bump-type == 'patch' ||
+            inputs.bump-type == 'minor' ||
+            inputs.bump-type == 'major'
+          )
+        run: |
+          git checkout release
+          if [[ "${{ inputs.bump-type }}" == "explicit" ]]; then
+            VERSION="${{ inputs.release-version }}"
+          else
+            VERSION="${{ steps.compute-release-as.outputs.value }}"
+          fi
+          git commit --allow-empty \
+            -m "chore: release ${VERSION}" \
+            -m "Release-As: ${VERSION}"
+          git push origin release
+
+      - name: Resolve target branch
+        id: target
+        run: |
+          if [[ "${{ inputs.trigger-event }}" == "workflow_dispatch" ]]; then
+            echo "branch=release" >> "$GITHUB_OUTPUT"
+          else
+            echo "branch=main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run release-please
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          token:         ${{ steps.app-token.outputs.token }}
+          config-file:   release-please-config.json
+          manifest-file: .release-please-manifest.json
+          target-branch: ${{ steps.target.outputs.branch }}
+
+      - name: Retarget release PR to main
+        if: inputs.trigger-event == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          PR=$(gh pr list \
+            --repo ${{ github.repository }} \
+            --head "release-please--branches--release" \
+            --json number \
+            --jq '.[0].number' 2>/dev/null || true)
+          if [[ -z "$PR" || "$PR" == "null" ]]; then
+            echo "No release PR found — nothing to retarget."
+            exit 0
+          fi
+          gh api repos/${{ github.repository }}/pulls/$PR -X PATCH -f base=main
+          SHA=$(gh api repos/${{ github.repository }}/git/refs/heads/release-please--branches--release --jq '.object.sha')
+          gh api \
+            repos/${{ github.repository }}/git/refs/heads/release-please--branches--release \
+            -X PATCH \
+            -f ref="refs/heads/release-please--branches--main" \
+            -f sha="$SHA"
+
+  post-release:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Generate token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          client-id:   ${{ secrets.RELEASER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          token:       ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Sync release branch to main
+        run: |
+          git fetch origin main
+          git checkout release 2>/dev/null || git checkout -b release
+          git reset --hard origin/main
+          git push origin release --force
+
+      - name: Post-release summary
+        run: |
+          echo "### Release ${{ needs.release-please.outputs.tag_name }} published" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tag \`${{ needs.release-please.outputs.tag_name }}\` is now available." >> "$GITHUB_STEP_SUMMARY"
+          echo "\`release\` branch has been reset to \`main\` for the next cycle." >> "$GITHUB_STEP_SUMMARY"
 ```
 
-**Each SDK repository** — replace the full workflow with a thin caller:
+**Each SDK repository** — a thin caller (Python SDK shown as an example):
 
 ```yaml
-# .github/workflows/release-please.yml
 name: release-please
+
+permissions:
+  contents: read
 
 on:
   push:
@@ -639,32 +852,115 @@ on:
   workflow_dispatch:
     inputs:
       bump-type:
+        description: >
+          Version bump type. Select 'explicit' to supply an exact version via
+          the 'release-version' field below. Select 'auto' to let
+          conventional-commits determine the bump automatically.
         required: false
         type: choice
         default: 'auto'
-        options: [auto, patch, minor, major, explicit]
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+          - explicit
       release-version:
+        description: >
+          Explicit version to release (e.g. 1.2.3 or 1.4.0-beta.1).
         required: false
         type: string
 
 jobs:
   release:
+    permissions:
+      contents: write
+      pull-requests: write
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.head_commit.message, 'release:')
     uses: openfga/sdk-generator/.github/workflows/release-please.yml@main
     with:
-      bump-type: ${{ inputs.bump-type || 'auto' }}
+      trigger-event:   ${{ github.event_name }}
+      bump-type:       ${{ inputs.bump-type || 'auto' }}
       release-version: ${{ inputs.release-version || '' }}
     secrets:
-      APP_ID: ${{ secrets.APP_ID }}
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+      RELEASER_APP_CLIENT_ID:   ${{ secrets.RELEASER_APP_CLIENT_ID }}
+      RELEASER_APP_PRIVATE_KEY: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
+      GPG_PRIVATE_KEY:          ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE:           ${{ secrets.GPG_PASSPHRASE }}
 ```
 
 Key points:
 
 - The central workflow **must** have `workflow_call` as a trigger — this is what makes it callable from other repositories.
-- Reference the central workflow as `org/repo/.github/workflows/file.yml@ref`. Pin to a tag or commit SHA (e.g. `@v1`) in production callers rather than `@main` for stability.
+- The caller passes `github.event_name` as `trigger-event` so the reusable workflow can distinguish a manual dispatch from a push-to-main run. This is necessary because `github.event_name` is not available in a `workflow_call` context.
+- Reference the central workflow as `org/repo/.github/workflows/file.yml@ref`. In production, callers should pin to a commit SHA or tag (e.g. `@v1`) rather than `@main` for stability.
 - **Secrets must be explicitly forwarded** via the `secrets:` block — they are not inherited automatically across repositories.
 - The `release` staging branch, `release-please-config.json`, `.release-please-manifest.json`, and all `x-release-please-version` markers still live in **each individual SDK repository** — only the workflow logic is centralised.
-- Any update to the shared workflow (e.g. a new step, a security fix, a new bump-type option) propagates to all callers immediately on the next run, without a PR to every SDK repo.
+- Any update to the shared workflow (e.g. a new step, a security fix, a new bump-type option) propagates to all callers on the next run, without a PR to every SDK repo.
+
+## Security
+[security]: #security
+
+This section documents the security controls that MUST be enforced for the release pipeline.
+
+### GPG-Signed Bot Commits
+
+All commits pushed by the releaser bot MUST be GPG-signed using the project's dedicated bot GPG key. In the reusable workflow, the key is imported via the `crazy-max/ghaction-import-gpg` action and git is configured with `commit.gpgSign = true` and `tag.gpgSign = true` before any commits are created:
+
+```yaml
+- name: Import GPG key
+  uses: crazy-max/ghaction-import-gpg@...
+  with:
+    gpg_private_key:     ${{ secrets.GPG_PRIVATE_KEY }}
+    passphrase:          ${{ secrets.GPG_PASSPHRASE }}
+    git_user_signingkey: true
+    git_commit_gpgsign:  true
+
+- name: Configure Git
+  run: |
+    git config user.name  openfga-releaser-bot
+    git config user.email ${{ steps.import-gpg.outputs.email }}
+    git config tag.gpgSign true
+```
+
+The GPG private key and passphrase are stored as repository/organization secrets (`GPG_PRIVATE_KEY`, `GPG_PASSPHRASE`) scoped to the releaser bot identity — not tied to any individual maintainer. The corresponding GPG public key must be published (e.g. in a project `SECURITY.md` or on a public keyserver) so that downstream users and auditors can verify signed artifacts.
+
+> Tags created by Release Please via the GitHub API additionally receive GitHub's own verified signature (`GPG Key ID: B5690EEEBB952194`). See [GPG-Signed Tags and Releases](#additional-enhancements) under Additional Enhancements for a path to producing fully bot-GPG-signed tags without relying on GitHub's API signature.
+
+### Tag Push Restrictions
+
+Maintainers MUST NOT be able to push tags directly. Tag protection rules must ensure that only the releaser GitHub App (bot) may create tags matching the `v*` pattern. No human actor — including repository admins — should be able to push a `v*` tag outside of the release workflow.
+
+**Configuration:**
+
+Under **Settings → Rules → Rulesets** (or **Settings → Tags → Protected tags**), create a tag ruleset matching `v*` that:
+
+- Restricts tag creation to the releaser GitHub App identity only.
+- Prevents deletion of `v*` tags by any actor.
+
+This ensures every published release tag is traceable to a workflow run and cannot be created or overwritten by an individual maintainer acting outside the automation.
+
+### Branch Protection for `main`
+
+Both the releaser bot and human maintainers MUST NOT be able to push directly to `main` without going through a pull request with a required CODEOWNER review.
+
+The following branch protection rules MUST be enabled on `main`:
+
+| Rule | Setting |
+|---|---|
+| Require a pull request before merging | ✅ Enabled |
+| Required approvals | ≥ 1 |
+| Require review from Code Owners | ✅ Enabled |
+| Restrict who can push to matching branches | ✅ Enabled (no direct push for any actor) |
+| Do not allow bypassing the above settings | ✅ Enabled (applies to admins and bots) |
+
+The releaser bot satisfies this constraint by design: it never pushes directly to `main`. The `Release-As` commit lands on the `release` staging branch, and all changes reach `main` exclusively through the reviewed Release PR. See [Workaround Flow](#workaround-flow-explicit-version-overrides-without-bot-write-access-to-main) for the full mechanics.
+
+A `CODEOWNERS` file must be present in each repository. At minimum it should designate the core SDK maintainer team as owners of all files (e.g. `* @openfga/sdk-maintainers`), ensuring that the required CODEOWNER review is enforced on all PRs — including the Release PR.
+
+---
 
 ## Failure Modes and Rollback Procedures
 [failure-modes-and-rollback-procedures]: #failure-modes-and-rollback-procedures
@@ -835,9 +1131,16 @@ The same approach will be applied to the VS Code extension, IntelliJ extension, 
 
 > **Note on the language repository:** The [openfga/language](https://github.com/openfga/language) repository is a mono-repo that contains multiple packages (one per language). Each package is released independently with its own tag prefix — e.g., `pkg/js/v0.2.1`, `pkg/go/v0.2.0`, etc. Release Please supports this via its multi-package configuration, where each package path in `release-please-config.json` maps to its own manifest entry, tag prefix, and set of `x-release-please-version` markers.
 
-### GPG Key Retirement
+### GPG Key Migration
 
-With this flow, release tags are created by Release Please via the GitHub API using the GitHub App token. GitHub automatically signs API-created tags with its own verified signature (`GPG Key ID: B5690EEEBB952194`), so the tags receive the **Verified** badge without any maintainer-managed GPG keys. Existing GPG signing infrastructure (keys in CI secrets, `gpg-agent` setup steps) can be removed as part of the migration.
+With this flow, the `Release-As` commit is signed by a **dedicated bot GPG key** rather than an individual maintainer's personal key. As part of the migration:
+
+1. Generate a new GPG key for the releaser bot identity (e.g. `openfga-releaser-bot <releaser@openfga.dev>`).
+2. Store the armored private key and passphrase as repository/organization secrets (`GPG_PRIVATE_KEY`, `GPG_PASSPHRASE`).
+3. Publish the bot's GPG public key (e.g. in a `SECURITY.md` or on a public keyserver) so downstream users can verify signed artifacts.
+4. Remove any personal maintainer GPG keys that were previously stored as CI secrets for signing release tags. Maintainers no longer sign release artifacts individually — the bot handles all signing.
+
+Release Please creates the git tag and GitHub Release via the GitHub API; those artifacts additionally receive GitHub's own verified signature (`GPG Key ID: B5690EEEBB952194`). See [Additional Enhancements](#additional-enhancements) for an optional path to producing fully bot-GPG-signed tags.
 
 ### Conventional Commits Enforcement
 
@@ -905,6 +1208,8 @@ Automatically release a new version on every merge to `main`.
 [additional-enhancements]: #additional-enhancements
 
 The following are valuable improvements that can be pursued independently after this RFC is implemented:
+
+- **GPG-signed tags and GitHub Releases:** By default, release-please creates git tags and GitHub Releases via the GitHub API, which receive GitHub's own verified signature rather than the project's dedicated GPG key. For full cryptographic traceability of release artifacts back to the project's published GPG key, the pipeline can be extended to skip release-please's tag and release creation (`skip-github-release: true`) and instead create the GPG-signed tag and GitHub Release directly in the `post-release` job. The `post-release` job would import the GPG key via `crazy-max/ghaction-import-gpg`, create the annotated tag with `git tag -s`, push it to the remote, and then create the GitHub Release via `gh release create`. This approach gives the project full ownership of every signed release artifact without depending on GitHub's API-generated signature.
 
 - **Nightly builds:** Build `main` on every merge (or nightly) to provide users with a "latest" build for testing prior to an official release.
 
