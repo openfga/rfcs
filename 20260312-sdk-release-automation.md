@@ -289,7 +289,7 @@ Example `.release-please-manifest.json`:
 
 The release workflow has two triggers:
 
-- **`push` to `main`** — the job only runs when the head commit message starts with `chore(release)` (the Release PR merge commit title set by Release Please). All other pushes to `main` are skipped entirely.
+- **`push` to `main`** — the job only runs when the head commit message starts with `release` (the Release PR merge commit title set by Release Please). All other pushes to `main` are skipped entirely.
 - **`workflow_dispatch`** — a maintainer triggers from the GitHub UI to create or update the Release PR with a specific bump type.
 
 A `concurrency` group (`release`, non-cancellable) ensures only one release run is in flight at a time.
@@ -335,13 +335,13 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     # On push: only run when the merge commit is a release PR commit
-    # (title starts with "chore(release)"). This prevents the job firing on
+    # (title starts with "release"). This prevents the job firing on
     # every single push to main. The release PR merge commit always has this
-    # title because release-please sets the PR title to "chore(release): ...".
+    # title because release-please sets the PR title to "release: ...".
     # On workflow_dispatch: always run (manual trigger for creating releases).
     if: |
       github.event_name == 'workflow_dispatch' ||
-      startsWith(github.event.head_commit.message, 'chore(release)')
+      startsWith(github.event.head_commit.message, 'release')
 
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
@@ -535,7 +535,7 @@ jobs:
 Key details:
 
 - **`Generate token`** mints a short-lived GitHub App token at the start of each job. All git operations and GitHub API calls use this App identity — never a personal token or the generic `github-actions[bot]` for PR-facing work.
-- **Job-level `if` guard:** On `push` events the job is skipped unless the head commit message starts with `chore(release)` — the title Release Please always gives Release PR merge commits. On `workflow_dispatch` the job always runs.
+- **Job-level `if` guard:** On `push` events the job is skipped unless the head commit message starts with `release` — the title Release Please always gives Release PR merge commits. On `workflow_dispatch` the job always runs.
 - **`Prepare release branch`** (dispatch only) force-resets the `release` staging branch to the tip of `main`, giving Release Please a clean base to work from each cycle.
 - **`Close stale release PRs`** (dispatch only) closes any open PRs whose head is `release-please--branches--release` before creating a new one, preventing duplicate-release failures.
 - **`Compute release-as version`** (dispatch only) reads the current version from `.release-please-manifest.json` and calculates the next semver for `patch`, `minor`, or `major` bumps. For `explicit`, the user-supplied version is used directly.
@@ -570,7 +570,7 @@ For organization migration, the same App can be installed across multiple reposi
 
 **On push to `main` (Release PR merge):**
 
-When a Release PR is merged, the merge commit message starts with `chore(release):`. The job-level `if` guard matches this pattern, so Release Please runs with `target-branch: main` and finalizes the release — creating the git tag and the GitHub Release. For all other merges to `main`, the job is skipped entirely.
+When a Release PR is merged, the merge commit message starts with `release:`. The job-level `if` guard matches this pattern, so Release Please runs with `target-branch: main` and finalizes the release — creating the git tag and the GitHub Release. For all other merges to `main`, the job is skipped entirely.
 
 **On `workflow_dispatch` (manual trigger):**
 
