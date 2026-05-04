@@ -4,7 +4,7 @@
 
 - **Name:** Cross-SDK Conformance Testing for OpenFGA SDKs
 - **Start Date:** 2025-12-28
-- **Authors**: @rhamzeh
+- **Authors**: @rhamzeh, @emilic
 - **Status:** Draft <!-- Acceptable values: Draft, Approved, On Hold, Superseded -->
 - **RFC Pull Request:** https://github.com/openfga/rfcs/pull/<TBD>
 - **Relevant Issues:**
@@ -186,15 +186,27 @@ Steps should include:
 
 All core OpenFGA API operations:
 
-- `Check`
-- `BatchCheck`
+- Stores:
+  - `ListStores`
+  - `CreateStore`
+  - `DeleteStore`
+  - `GetStore`
+- Models:
+- `ReadAuthorizationModels`
+- `WriteAuthorizationModels`
+- `ReadAuthorizationModel`
+- Tuples:
 - `Write`
 - `Read`
+- `ReadChanges`
+- Queries:
+- `Check`
+- `BatchCheck`
 - `Expand`
 - `ListObjects`
+- `StreamedListObjects`
 - `ListUsers`
-- `ListStores`
-- `ListAssertions`
+- Assertions:
 - `ReadAssertions`
 - `WriteAssertions`
 
@@ -239,3 +251,6 @@ TBD
 ## Unresolved Questions
 
 - How should we surface the supported API version all the way to the SDK Generator to make sure it's generating from the same commit?
+- Should every SDK release include a report of that SDK's coverage?
+- Should we have a cross-SDK report that details what each SDK supports? Should it target latest main or last stable release? Should it run against latest conformance tests or the conformance test version it targets?
+- For wiremock, we should aim to reuse bundles when possible and not have a bundle per-test, but how do we identify when a particular test require different results? Should it be different tests by name? Should the runner send a header with that particular test ID?
