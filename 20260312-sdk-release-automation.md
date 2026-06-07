@@ -181,7 +181,9 @@ Example output:
 * docs: update API reference ([#108](https://github.com/openfga/go-sdk/pull/108))
 ```
 
-Additional notes (e.g., contributor acknowledgments, migration tips, or usage examples) can be added to the changelog when the Release PR is reviewed or to the GitHub Release notes after creation, just as we do today.
+Additional notes (contributor acknowledgments, migration tips, usage examples) are curated directly in `CHANGELOG.md` while the Release PR is under review.
+
+> **Note — release notes come from the changelog, not the PR description.** Early in our adoption we leaned on a release-please behaviour where the GitHub Release notes were generated via GitHub's API and the **Release PR description** was captured into them — so the guidance back then was to also edit the PR description to read exactly as you wanted the release notes (ideally mirroring the changelog). With the changelog-based flow (see [Signed Tags, Draft Releases, and Undraft-on-Publish](#how-it-works)), the `post-release` job builds the notes from the matching `CHANGELOG.md` section plus GitHub's auto-generated "what's changed". The **changelog is now the single source of truth**, so we no longer need to maintain the PR description separately — curating `CHANGELOG.md` in the Release PR is sufficient.
 
 ### Explicit Version Overrides
 
@@ -196,6 +198,8 @@ The workflow supports explicit overrides via the `bump-type` input on the `workf
 - **`explicit`** — Supply an exact version string (e.g., `1.2.3` or `1.4.0-beta.1`) via the `release-version` input.
 
 For non-`auto` bump types, the workflow computes the next version from the current version in `.release-please-manifest.json`, creates an empty commit with the `Release-As: X.Y.Z` trailer, and pushes it to the `release` staging branch (never directly to `main`). Release Please then picks up the trailer and uses the specified version instead of auto-calculating. The PR is subsequently retargeted to `main` so it goes through the normal review flow. See [Workaround Flow](#workaround-flow-explicit-version-overrides-without-bot-write-access-to-main) for the full mechanics.
+
+> **Note — releasing changes that aren't user-facing.** `auto` derives the bump from commit history, and commit types that are hidden from the changelog (`chore`, `docs`, `ci`, `test`, `refactor`) are treated as *non-releasing*. If the only changes since the last release are of those types, `auto` concludes no release is warranted and will not open a Release PR. To ship such a release anyway — for example a docs-only update or a dependency bump — choose any bump rule **other than `auto`** (`patch`, `minor`, `major`, or `explicit`), which forces the version forward via the `Release-As` trailer regardless of commit types.
 
 ### Conventional Commits Validation
 
@@ -288,7 +292,7 @@ Example `.release-please-manifest.json`:
 
 ### GitHub Actions Workflow
 
-> **Note:** The section below describes the workflow design concepts. The production-ready implementation splits this into a reusable central workflow (in `openfga/sdk-generator`) and a thin per-repo caller. See [Reusable Workflow Across the Organisation](#reusable-workflow-across-the-organisation) for the full production workflows.
+> **Note:** The section below describes the workflow design concepts. The production-ready implementation splits this into a reusable central workflow (hosted in the organisation-level [`openfga/.github`](https://github.com/openfga/.github) repository) and a thin per-repo caller. See [Reusable Workflow Across the Organisation](#reusable-workflow-across-the-organisation) for the full production workflows.
 
 The release workflow has two triggers:
 
@@ -547,7 +551,7 @@ Key details:
 - **`Run release-please`** runs on every invocation. The `target-branch` output from the previous step controls whether it is creating/updating a PR or finalizing a release.
 - **`Retarget release PR to main`** (dispatch only) retargets the PR base to `main` and renames the head branch from `release-please--branches--release` to `release-please--branches--main` via GitHub API. This ensures the post-merge push event can correlate the merge commit with the release PR by head-branch name.
 - **`Sync release branch to main`** (`post-release` job) resets the `release` branch back to `main` after a successful release so the next dispatch cycle starts from a clean state.
-- **`post-release`** is a downstream job that runs only when `release_created == 'true'`. It mints its own App token and is the extension point for publish steps, deployment triggers, and notifications.
+- **`post-release`** runs on the Release PR merge (`push` to `main`). In the production workflow it mints its own App token, imports the bot GPG key, creates the signed `v*` tag and a draft GitHub Release, and — via the tag push — hands off to the per-repo publish workflow that undrafts the release on success. See [Signed Tags, Draft Releases, and Undraft-on-Publish](#how-it-works).
 
 ### Identity and Signing
 
@@ -555,7 +559,7 @@ Instead of using a Personal Access Token (PAT) tied to an individual maintainer,
 
 - **No long-lived secrets.** The App's static credentials (`RELEASER_APP_CLIENT_ID` + `RELEASER_APP_PRIVATE_KEY`) are exchanged for a short-lived token at the start of each workflow run via [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token). The token expires after the run completes, so the blast radius of any credential compromise is limited to a single run.
 - **Least privilege.** The App is granted only `contents: write` and `pull-requests: write` — the minimum permissions needed to push the `Release-As` commit, manage the Release PR, and create tags.
-- **GPG-signed commits.** The `Release-As` commit pushed to the `release` staging branch is GPG-signed using a dedicated bot GPG key, imported via the `crazy-max/ghaction-import-gpg` action. Git is configured with `commit.gpgSign = true` and `tag.gpgSign = true` so every commit and tag produced by the bot carries a verifiable signature traceable to the project's published GPG key. Tags created by Release Please via the GitHub API additionally receive GitHub's own verified signature.
+- **GPG-signed commits and tags.** The `Release-As` commit pushed to the `release` staging branch is GPG-signed using a dedicated bot GPG key, imported via the `crazy-max/ghaction-import-gpg` action. Git is configured with `commit.gpgSign = true` and `tag.gpgSign = true` so every commit and tag produced by the bot carries a verifiable signature traceable to the project's published GPG key. The release tag itself is created by the bot with `git tag -s` in the `post-release` job — release-please's own tag/release creation is disabled via `skip-github-release: true` — so the `v*` tag carries the bot's GPG signature rather than GitHub's API-generated signature.
 - **Not tied to a person.** Unlike a PAT, the App identity is owned by the account or organization, not an individual. There is no risk of losing access when a maintainer rotates out.
 
 **Setup steps:**
@@ -574,7 +578,7 @@ For organization migration, the same App and GPG key can be configured across mu
 
 **On push to `main` (Release PR merge):**
 
-When a Release PR is merged, the merge commit message starts with `release:`. The job-level `if` guard matches this pattern, so Release Please runs with `target-branch: main` and finalizes the release — creating the git tag and the GitHub Release. For all other merges to `main`, the job is skipped entirely.
+When a Release PR is merged, the merge commit message starts with `release:`. The caller's `if` guard matches this pattern, so the reusable workflow runs with `target-branch: main` (landing the changelog and manifest bump), and the `post-release` job then creates the GPG-signed `v*` tag and a **draft** GitHub Release. For all other merges to `main`, the workflow is skipped entirely.
 
 **On `workflow_dispatch` (manual trigger):**
 
@@ -592,19 +596,26 @@ When a Release PR is merged, the merge commit message starts with `release:`. Th
 
 7. **Merge:** A maintainer merges the Release PR into `main`. This triggers the `push` path above, which finalizes the release.
 
-8. **Post-release:** The `post-release` job runs, resets the `release` branch back to `main` for the next cycle, and produces a summary in the Actions UI.
+8. **Post-release:** The `post-release` job creates the GPG-signed `v*` tag and a draft GitHub Release (notes built from the `CHANGELOG.md` section plus GitHub's auto-generated notes), then resets the `release` branch back to `main` for the next cycle.
 
-9. **Publish:** The existing tag-triggered workflow detects the `v*` tag, runs the test suite, and publishes to the appropriate registry.
+9. **Publish & undraft:** Pushing the signed tag triggers the existing tag-triggered workflow, which runs the test suite and publishes to the appropriate registry. On success it calls `undraft-release.yml` to flip the draft release to published.
 
-### Consistency via sdk-generator
+### Consistency across repositories
 
-The release workflow, Release Please configuration, and Conventional Commits validation check will be **templated in the [sdk-generator](https://github.com/openfga/sdk-generator)** and applied uniformly to all SDK repositories. This ensures that any improvements to the release process propagate automatically to every SDK.
+The reusable release workflows, the Conventional Commits PR-title check, and the shared release-notes scripts are centralised in the organisation-level **[`openfga/.github`](https://github.com/openfga/.github)** repository and called by every SDK/CLI repo. The per-repo Release Please configuration (`release-please-config.json`, `.release-please-manifest.json`, and the `x-release-please-version` markers) continues to be generated and kept in sync via the [sdk-generator](https://github.com/openfga/sdk-generator). This split means any improvement to the release *logic* propagates to all repos on the next run (no per-repo PR), while the language-specific *configuration* stays owned by each repo.
 
 ### Reusable Workflow Across the Organisation
 
-Rather than duplicating the full `release-please.yml` into every SDK repository, the workflow is centralised once in `openfga/sdk-generator` and called from each repo using GitHub's [`workflow_call`](https://docs.github.com/en/actions/using-workflows/reusing-workflows) trigger. The config files (`release-please-config.json`, `.release-please-manifest.json`, version markers) remain per-repo; the workflow logic lives in one place.
+Rather than duplicating the full `release-please.yml` into every repository, the workflow logic is centralised once in **`openfga/.github`** and called from each repo using GitHub's [`workflow_call`](https://docs.github.com/en/actions/using-workflows/reusing-workflows) trigger. GitHub only resolves reusable workflows from a repository's `.github/workflows/` directory, so the org repo named `.github` hosts them there and callers reference them as `openfga/.github/.github/workflows/<file>@<ref>` — the doubled `.github` is the repository name followed by the directory. The config files (`release-please-config.json`, `.release-please-manifest.json`, version markers) remain per-repo; the workflow logic lives in one place.
 
-**Central repository (`openfga/sdk-generator`)** — the reusable workflow (`release-please.yml`):
+The shared repo hosts:
+
+- `.github/workflows/release-please.yml` — release preparation plus signed-tag / draft-release creation.
+- `.github/workflows/undraft-release.yml` — flips a draft release to published; called by each repo's publish workflow after a successful registry publish.
+- `.github/workflows/pr-title-check.yml` — the Conventional Commits PR-title validation.
+- `.github/workflows/scripts/parse-release.sh` — the manifest-diff / changelog-notes helper, unit-tested by `.github/workflows/test-release-scripts.yml`.
+
+**Central repository (`openfga/.github`)** — the reusable workflow (`.github/workflows/release-please.yml`):
 
 ```yaml
 name: release-please
@@ -803,9 +814,12 @@ jobs:
             -f ref="refs/heads/release-please--branches--main" \
             -f sha="$SHA"
 
+  # post-release: fires on the Release PR merge (push to main). With
+  # skip-github-release enabled, release-please only lands the changelog/manifest
+  # bump — this job creates the GPG-signed tag and a *draft* GitHub Release.
   post-release:
     needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    if: inputs.trigger-event == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -824,18 +838,68 @@ jobs:
           token:       ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
 
+      - name: Import GPG key
+        id: import-gpg
+        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v7.0.0
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase:      ${{ secrets.GPG_PASSPHRASE }}
+          git_user_signingkey: true
+          git_commit_gpgsign:  true
+
+      - name: Configure Git
+        run: |
+          git config user.name openfga-releaser-bot
+          git config user.email ${{ steps.import-gpg.outputs.email }}
+          git config tag.gpgSign true
+
+      # parse-release.sh lives in openfga/.github; actions/checkout above pulled
+      # the *caller* repo, so check out the shared repo for the helper script.
+      - name: Checkout shared release scripts
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository:  openfga/.github
+          ref:         main
+          path:        .shared-ci
+
+      - name: Detect released version from manifest diff
+        id: parse-release
+        run: |
+          git show "HEAD~1:.release-please-manifest.json" > /tmp/prev.json
+          RELEASES=$(bash .shared-ci/.github/workflows/scripts/parse-release.sh \
+            manifest-diff .release-please-manifest.json /tmp/prev.json)
+          echo "releases=$RELEASES" >> "$GITHUB_OUTPUT"
+
+      - name: Create signed tag and draft GitHub release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO:     ${{ github.repository }}
+        run: |
+          echo '${{ steps.parse-release.outputs.releases }}' | jq -c '.[]' | while read -r ENTRY; do
+            VERSION=$(jq -r '.version'  <<<"$ENTRY")
+            TAG=$(jq -r '.tag_name'     <<<"$ENTRY")
+
+            # GPG-signed tag. Pushing it with the App token (not GITHUB_TOKEN)
+            # is what triggers the publish workflow.
+            git tag -s "$TAG" -m "Release ${TAG}"
+            git push origin "$TAG"
+
+            # Release notes = CHANGELOG section (parse-release.sh) + GitHub's
+            # auto-generated notes for the same range.
+            NOTES=$(bash .shared-ci/.github/workflows/scripts/parse-release.sh \
+              changelog-notes CHANGELOG.md "$VERSION")
+
+            # Draft release — undrafted later by the publish workflow on success.
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes "$NOTES" --draft
+          done
+
+      # Reset the release branch back to main so the next cycle starts clean.
       - name: Sync release branch to main
         run: |
           git fetch origin main
           git checkout release 2>/dev/null || git checkout -b release
           git reset --hard origin/main
           git push origin release --force
-
-      - name: Post-release summary
-        run: |
-          echo "### Release ${{ needs.release-please.outputs.tag_name }} published" >> "$GITHUB_STEP_SUMMARY"
-          echo "Tag \`${{ needs.release-please.outputs.tag_name }}\` is now available." >> "$GITHUB_STEP_SUMMARY"
-          echo "\`release\` branch has been reset to \`main\` for the next cycle." >> "$GITHUB_STEP_SUMMARY"
 ```
 
 **Each SDK repository** — a thin caller (Python SDK shown as an example):
@@ -879,7 +943,7 @@ jobs:
     if: |
       github.event_name == 'workflow_dispatch' ||
       startsWith(github.event.head_commit.message, 'release:')
-    uses: openfga/sdk-generator/.github/workflows/release-please.yml@main
+    uses: openfga/.github/.github/workflows/release-please.yml@main
     with:
       trigger-event:   ${{ github.event_name }}
       bump-type:       ${{ inputs.bump-type || 'auto' }}
@@ -899,6 +963,31 @@ Key points:
 - **Secrets must be explicitly forwarded** via the `secrets:` block — they are not inherited automatically across repositories.
 - The `release` staging branch, `release-please-config.json`, `.release-please-manifest.json`, and all `x-release-please-version` markers still live in **each individual SDK repository** — only the workflow logic is centralised.
 - Any update to the shared workflow (e.g. a new step, a security fix, a new bump-type option) propagates to all callers on the next run, without a PR to every SDK repo.
+
+### Signed Tags, Draft Releases, and Undraft-on-Publish
+
+The release finalisation is intentionally **not** delegated to release-please's own tag/release creation. Each repo's `release-please-config.json` sets `"skip-github-release": true`, so release-please only lands the changelog and manifest bump in the Release PR. The signed tag and the GitHub Release are produced by the `post-release` job, which gives the project full ownership of every release artifact and a clean publish handshake:
+
+1. **Detect what changed.** On the Release PR merge (`push` to `main`), `post-release` diffs `.release-please-manifest.json` against its previous revision using the shared `parse-release.sh manifest-diff` helper. For a single-package repo the manifest is `{ ".": "X.Y.Z" }`, so the helper yields one release with tag `vX.Y.Z`.
+2. **Create the GPG-signed tag.** The bot's GPG key is imported and the tag is created with `git tag -s` and pushed. Because the push is authenticated with the **GitHub App installation token** (not the default `GITHUB_TOKEN`, whose pushes are deliberately prevented from triggering further workflows), the tag push **does** start the existing publish workflow.
+3. **Build the release notes.** Notes are assembled from the matching `CHANGELOG.md` section (`parse-release.sh changelog-notes`) and GitHub's auto-generated "what's changed" notes for the same commit range.
+4. **Create a *draft* GitHub Release.** The release is created as a draft against the signed tag (marked pre-release when the version carries a suffix such as `-beta.1`).
+5. **Publish, then undraft.** The tag push triggers the per-repo publish workflow (test → publish to the language registry). Only after those jobs succeed does a final job call the shared `undraft-release.yml`, which flips the release to published (preserving the pre-release flag). If publishing fails, the release stays a draft — nothing half-published is ever surfaced as a real release.
+
+The publish workflow undraft step is a thin caller:
+
+```yaml
+  undraft-release:
+    needs: [publish]            # whatever the repo's publish jobs are
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write           # job-level grant; top-level default stays read
+    uses: openfga/.github/.github/workflows/undraft-release.yml@main
+```
+
+**Where the logic lives.** The `parse-release.sh` helper (and its unit tests, run by `test-release-scripts.yml` on every change) lives in `openfga/.github` at `.github/workflows/scripts/`. Since a reusable workflow's `actions/checkout` checks out the *caller* repo, `post-release` additionally checks out `openfga/.github` into a sub-path so the helper is available at runtime.
+
+> **Why a draft first?** Creating the release as a draft and only undrafting after a successful publish makes the GitHub Release the source of truth for "this version is actually out". It also closes the small window where a release could be visible while its package is still missing from the registry.
 
 ## Security
 [security]: #security
@@ -927,7 +1016,7 @@ All commits pushed by the releaser bot MUST be GPG-signed using the project's de
 
 The GPG private key and passphrase are stored as repository/organization secrets (`GPG_PRIVATE_KEY`, `GPG_PASSPHRASE`) scoped to the releaser bot identity — not tied to any individual maintainer. The corresponding GPG public key must be published (e.g. in a project `SECURITY.md` or on a public keyserver) so that downstream users and auditors can verify signed artifacts.
 
-> Tags created by Release Please via the GitHub API additionally receive GitHub's own verified signature (`GPG Key ID: B5690EEEBB952194`). See [GPG-Signed Tags and Releases](#additional-enhancements) under Additional Enhancements for a path to producing fully bot-GPG-signed tags without relying on GitHub's API signature.
+> Release tags are created by the releaser bot with `git tag -s` in the `post-release` job (`skip-github-release: true` disables release-please's own tag/release creation), so each `v*` tag carries the bot's GPG signature traceable to the project's published key — no reliance on GitHub's API-generated signature. See [Signed Tags, Draft Releases, and Undraft-on-Publish](#how-it-works).
 
 ### Tag Push Restrictions
 
@@ -1129,7 +1218,14 @@ Each repository must add the `x-release-please-version` marker comment to all fi
 
 The same approach will be applied to the VS Code extension, IntelliJ extension, OpenFGA language repository, and any other repositories that follow a versioned release process.
 
-> **Note on the language repository:** The [openfga/language](https://github.com/openfga/language) repository is a mono-repo that contains multiple packages (one per language). Each package is released independently with its own tag prefix — e.g., `pkg/js/v0.2.1`, `pkg/go/v0.2.0`, etc. Release Please supports this via its multi-package configuration, where each package path in `release-please-config.json` maps to its own manifest entry, tag prefix, and set of `x-release-please-version` markers.
+> **Note on multi-package (mono-repo) repositories — e.g. [openfga/language](https://github.com/openfga/language):** Some repositories ship multiple packages (one per language) from a single repo, each released independently with its own tag prefix (`pkg/js/v0.2.1`, `pkg/go/v0.2.0`, …). Release Please handles this with a multi-package `release-please-config.json`, and the same reusable workflow and scripts serve it unchanged. The relevant config keys are:
+>
+> - `"separate-pull-requests": true` — one Release PR per package that has unreleased changes, instead of a single combined PR.
+> - `"include-component-in-tag": true` with `"tag-separator": "/"` — tags are prefixed with the component path (`pkg/go/v0.2.0`).
+> - One entry per package under `packages`, each with its own `component`, `package-name`, `changelog-path`, and `x-release-please-version` markers. The manifest then carries one version per package, e.g. `{ "pkg/go": "0.2.0", "pkg/js": "0.2.1" }`.
+> - `"skip-github-release": true` — the same signed-tag / draft-release / undraft flow as the single-package repos.
+>
+> The shared `parse-release.sh manifest-diff` helper is component-aware: it diffs the per-package manifest entries and emits one release per *changed* package, mapping the root component `.` to a plain `vX.Y.Z` tag and any other component to `<component>/vX.Y.Z`. The `post-release` job loops over those entries, signing and drafting each independently and resolving each package's `CHANGELOG.md` and previous-tag glob from its component. The `workflow_dispatch` inputs additionally accept a `target-package` selector so a maintainer can release one package (or `all`), and the per-component Release PRs are retargeted from the `release` staging branch to `main` exactly as in the single-package flow.
 
 ### GPG Key Migration
 
@@ -1140,7 +1236,7 @@ With this flow, the `Release-As` commit is signed by a **dedicated bot GPG key**
 3. Publish the bot's GPG public key (e.g. in a `SECURITY.md` or on a public keyserver) so downstream users can verify signed artifacts.
 4. Remove any personal maintainer GPG keys that were previously stored as CI secrets for signing release tags. Maintainers no longer sign release artifacts individually — the bot handles all signing.
 
-Release Please creates the git tag and GitHub Release via the GitHub API; those artifacts additionally receive GitHub's own verified signature (`GPG Key ID: B5690EEEBB952194`). See [Additional Enhancements](#additional-enhancements) for an optional path to producing fully bot-GPG-signed tags.
+With `skip-github-release: true`, the git tag and GitHub Release are created by the releaser bot in the `post-release` job — the tag via `git tag -s` (carrying the bot's GPG signature) and the release via `gh release create`. Release-please no longer creates these via the GitHub API. See [Signed Tags, Draft Releases, and Undraft-on-Publish](#how-it-works).
 
 ### Conventional Commits Enforcement
 
@@ -1209,7 +1305,7 @@ Automatically release a new version on every merge to `main`.
 
 The following are valuable improvements that can be pursued independently after this RFC is implemented:
 
-- **GPG-signed tags and GitHub Releases:** By default, release-please creates git tags and GitHub Releases via the GitHub API, which receive GitHub's own verified signature rather than the project's dedicated GPG key. For full cryptographic traceability of release artifacts back to the project's published GPG key, the pipeline can be extended to skip release-please's tag and release creation (`skip-github-release: true`) and instead create the GPG-signed tag and GitHub Release directly in the `post-release` job. The `post-release` job would import the GPG key via `crazy-max/ghaction-import-gpg`, create the annotated tag with `git tag -s`, push it to the remote, and then create the GitHub Release via `gh release create`. This approach gives the project full ownership of every signed release artifact without depending on GitHub's API-generated signature.
+- **GPG-signed tags and GitHub Releases (implemented):** Rather than letting release-please create tags and releases via the GitHub API (which carry GitHub's signature, not the project's key), the pipeline sets `"skip-github-release": true` and creates the GPG-signed tag (`git tag -s`) and the GitHub Release (`gh release create`) directly in the `post-release` job. This gives the project full ownership of every signed release artifact. See [Signed Tags, Draft Releases, and Undraft-on-Publish](#how-it-works) for the full handshake (including the draft-then-undraft-on-publish-success behaviour).
 
 - **Nightly builds:** Build `main` on every merge (or nightly) to provide users with a "latest" build for testing prior to an official release.
 
