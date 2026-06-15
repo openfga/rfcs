@@ -46,7 +46,7 @@ This RFC proposes adopting [Release Please](https://github.com/googleapis/releas
 
 - **Default Changelog Format (`changelog-type: "default"`):** The built-in Release Please changelog format that groups entries by Conventional Commit type into named sections (e.g., `Added`, `Fixed`, `Changed`). Unlike `changelog-type: "github"` — which bypasses section grouping entirely and calls GitHub's release notes API — the `default` type respects the `changelog-sections` configuration, giving full control over which commit types appear, what they are labelled, and whether they are hidden. This is the format used across all OpenFGA SDKs.
 
-- **GitHub App Token:** A short-lived token minted at the start of each workflow run by a dedicated GitHub App installed on the repository. The App is granted only `contents: write` and `pull-requests: write` permissions. The token expires after the workflow run completes, limiting the blast radius of any credential compromise to a single run. The App's `APP_ID` and `APP_PRIVATE_KEY` are stored as repository (or organization) secrets.
+- **GitHub App Token:** A short-lived token minted at the start of each workflow run by a dedicated GitHub App installed on the repository. The App is granted only `contents: write` and `pull-requests: write` permissions. The token expires after the workflow run completes, limiting the blast radius of any credential compromise to a single run. The App's `RELEASER_APP_CLIENT_ID` and `RELEASER_APP_PRIVATE_KEY` are stored as repository (or organization) secrets and exchanged for the token via [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token) using `client-id` authentication.
 
 ## Motivation
 [motivation]: #motivation
@@ -112,8 +112,8 @@ This proposal introduces a two-phase release workflow for all OpenFGA SDKs, buil
 │  Maintainer reviews and merges the Release PR                   │
 │                                                                 │
 │  • push to main — Job only runs when the Release PR merge       │
-│    commit lands (chore: release ...). Release Please finalizes  │
-│    the release: creates the git tag and GitHub Release.         │
+│    commit lands (title "release: ..."). The post-release job    │
+│    creates the signed git tag and a draft GitHub Release.       │
 └──────────────────────────┬──────────────────────────────────────┘
                            │
                            ▼
@@ -165,6 +165,9 @@ The section mapping used across all SDKs:
 | `test` | Tests | hidden |
 | `ci` | CI | hidden |
 | `chore` | Miscellaneous | hidden |
+| `release` | Miscellaneous | hidden |
+
+The `release` type is mapped explicitly (and hidden) so that the `chore: release …` / `release: …` commits produced by the workflow itself are recognised as valid Conventional Commits and never surface in a changelog section.
 
 Example output:
 
@@ -182,6 +185,10 @@ Example output:
 ```
 
 Additional notes (contributor acknowledgments, migration tips, usage examples) are curated directly in `CHANGELOG.md` while the Release PR is under review.
+
+> **Note — this is a different *authoring model* from classic Keep a Changelog, not just a different format.** In classic [Keep a Changelog](https://keepachangelog.com/) (KaC), contributors hand-maintain an `[Unreleased]` section as they merge PRs, and at release time those accumulated entries are moved verbatim under a new dated version heading (`## [X.Y.Z] - YYYY-MM-DD`). The SDKs deliberately **removed the `[Unreleased]` section** and let Release Please *generate* every entry from Conventional Commit history — so the changelog body is derived from commits rather than curated by hand.
+>
+> **A repo can keep the KaC authoring model and still adopt this pipeline.** Everything *after* changelog generation in this design — the signed-tag / draft-release / undraft-on-publish handshake, the reusable org-level workflows, the GitHub App identity, the branch-protection-safe `Release-As` workaround — is independent of *how* the changelog body is produced. The only release-please-specific coupling is changelog generation from commits. A project that prefers to keep a hand-curated `[Unreleased]` section therefore only needs to **write a parser for the KaC format** (and disable release-please's own changelog generation) to feed its dated release sections into the same downstream flow. The shared [`parse-release.sh changelog-notes`](#reusable-workflow-across-the-organisation) helper already matches a version against any `## …` heading regardless of whether it reads `## 0.7.3 (2026-03-12)` (release-please default) or `## [0.7.3] - 2026-03-12` (KaC), so the release-notes extraction step needs no changes — only the upstream "produce the changelog body" step differs. This makes the org-level pipeline a viable migration target even for repos that want to retain Keep a Changelog.
 
 > **Note — release notes come from the changelog, not the PR description.** Early in our adoption we leaned on a release-please behaviour where the GitHub Release notes were generated via GitHub's API and the **Release PR description** was captured into them — so the guidance back then was to also edit the PR description to read exactly as you wanted the release notes (ideally mirroring the changelog). With the changelog-based flow (see [Signed Tags, Draft Releases, and Undraft-on-Publish](#how-it-works)), the `post-release` job builds the notes from the matching `CHANGELOG.md` section plus GitHub's auto-generated "what's changed". The **changelog is now the single source of truth**, so we no longer need to maintain the PR description separately — curating `CHANGELOG.md` in the Release PR is sufficient.
 
@@ -205,20 +212,14 @@ For non-`auto` bump types, the workflow computes the next version from the curre
 
 Release Please depends on [Conventional Commits](https://www.conventionalcommits.org/) to determine version bumps and generate changelogs. To ensure every PR merged to `main` conforms to the specification, a **PR title validation check** will be added as a **required status check** on all SDK repositories.
 
-This pattern is already in use at [openfga/terraform-provider-openfga](https://github.com/openfga/terraform-provider-openfga) and will be adopted across all SDKs:
+This pattern is already in use at [openfga/terraform-provider-openfga](https://github.com/openfga/terraform-provider-openfga) and is adopted across all SDKs. Like the release workflow, the check itself is **centralised as a reusable `workflow_call` workflow** in `openfga/.github` (`.github/workflows/pr-title-check.yml`) so the action pin and the accepted commit-type list are maintained in one place:
 
 ```yaml
-name: Pull Request
+# openfga/.github — .github/workflows/pr-title-check.yml (reusable)
+name: PR Title Conventional Commit Check
 
 on:
-  pull_request:
-    types:
-      - opened
-      - reopened
-      - synchronize
-      - edited
-    branches:
-      - main
+  workflow_call:
 
 jobs:
   validate-pr-title:
@@ -228,13 +229,29 @@ jobs:
       pull-requests: read
     steps:
       - name: PR Conventional Commit Validation
-        uses: ytanikin/pr-conventional-commits@fda730cb152c05a849d6d84325e50c6182d9d1e9 # v1.5.1
+        uses: ytanikin/pr-conventional-commits@639145d78959c53c43112365837e3abd21ed67c1 # v1.5.2
         with:
-          task_types: '["feat","fix","docs","test","refactor","ci","perf","chore","revert"]'
+          task_types: '["feat","fix","docs","test","refactor","ci","perf","chore","revert","release"]'
           add_label: 'false'
 ```
 
-The `validate-pr-title` job must be configured as a **required status check** in each repository's branch protection rules. This ensures that no PR can be merged to `main` without a properly formatted title, which in turn guarantees that Release Please can always generate an accurate changelog entry.
+Each SDK repo wires it up with a thin caller that supplies the `pull_request` trigger:
+
+```yaml
+# each SDK repo — .github/workflows/pr-title-check.yml (caller)
+name: Pull Request
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+    branches: [main]
+
+jobs:
+  validate-pr-title:
+    uses: openfga/.github/.github/workflows/pr-title-check.yml@main
+```
+
+Note that `release` is included in `task_types` so that the Release PR's own `release:`-prefixed title passes the check. The `validate-pr-title` job must be configured as a **required status check** in each repository's branch protection rules. This ensures that no PR can be merged to `main` without a properly formatted title, which in turn guarantees that Release Please can always generate an accurate changelog entry.
 
 ## How it Works
 [how-it-works]: #how-it-works
@@ -252,6 +269,8 @@ Example `release-please-config.json`:
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "release-type": "go",
+  "pull-request-title-pattern": "release: v${version}",
+  "skip-github-release": true,
   "packages": {
     ".": {
       "include-component-in-tag": false,
@@ -268,7 +287,8 @@ Example `release-please-config.json`:
         { "type": "docs",     "section": "Documentation", "hidden": false },
         { "type": "test",     "section": "Tests",         "hidden": true  },
         { "type": "ci",       "section": "CI",            "hidden": true  },
-        { "type": "chore",    "section": "Miscellaneous", "hidden": true  }
+        { "type": "chore",    "section": "Miscellaneous", "hidden": true  },
+        { "type": "release",  "section": "Miscellaneous", "hidden": true  }
       ],
       "extra-files": [
         { "type": "generic", "path": "version/version.go" },
@@ -283,6 +303,8 @@ Example `release-please-config.json`:
 
 > **Note on `extra-files` types:** Release Please supports three entry types under `extra-files`. `"generic"` updates any file containing an `x-release-please-version` marker comment. `"json"` and `"toml"` use a `jsonpath` expression to locate the version field directly, without needing a marker comment — useful for `package.json` and `pyproject.toml` where adding a comment next to the version field is not idiomatic.
 
+> **Note on `pull-request-title-pattern` and `skip-github-release`:** Two top-level keys are load-bearing for this design. `"pull-request-title-pattern": "release: v${version}"` makes Release Please title the Release PR (and therefore its merge commit) with the `release:` prefix that the caller workflow's push-trigger `if` guard matches — this is what distinguishes a Release PR merge from any other push to `main`. `"skip-github-release": true` disables Release Please's own tag and GitHub Release creation so the `post-release` job can create the GPG-signed tag and draft release itself (see [Signed Tags, Draft Releases, and Undraft-on-Publish](#how-it-works)).
+
 Example `.release-please-manifest.json`:
 ```json
 {
@@ -296,7 +318,7 @@ Example `.release-please-manifest.json`:
 
 The release workflow has two triggers:
 
-- **`push` to `main`** — the job only runs when the head commit message starts with `release` (the Release PR merge commit title set by Release Please). All other pushes to `main` are skipped entirely.
+- **`push` to `main`** — the job only runs when the head commit message starts with `release:` (the Release PR merge commit title, set via the `pull-request-title-pattern: "release: v${version}"` config key). All other pushes to `main` are skipped entirely.
 - **`workflow_dispatch`** — a maintainer triggers from the GitHub UI to create or update the Release PR with a specific bump type.
 
 A `concurrency` group (`release`, non-cancellable) ensures only one release run is in flight at a time.
@@ -348,7 +370,7 @@ jobs:
     # On workflow_dispatch: always run (manual trigger for creating releases).
     if: |
       github.event_name == 'workflow_dispatch' ||
-      startsWith(github.event.head_commit.message, 'release')
+      startsWith(github.event.head_commit.message, 'release:')
 
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
@@ -358,10 +380,10 @@ jobs:
     steps:
       - name: Generate token
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
-          app-id:      ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          client-id:   ${{ secrets.RELEASER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -511,10 +533,10 @@ jobs:
     steps:
       - name: Generate token
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
-          app-id:      ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          client-id:   ${{ secrets.RELEASER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -542,7 +564,7 @@ jobs:
 Key details:
 
 - **`Generate token`** mints a short-lived GitHub App token at the start of each job. All git operations and GitHub API calls use this App identity — never a personal token or the generic `github-actions[bot]` for PR-facing work.
-- **Job-level `if` guard:** On `push` events the job is skipped unless the head commit message starts with `release` — the title Release Please always gives Release PR merge commits. On `workflow_dispatch` the job always runs.
+- **Job-level `if` guard:** On `push` events the job is skipped unless the head commit message starts with `release:` — the title Release Please gives Release PR merge commits via `pull-request-title-pattern`. On `workflow_dispatch` the job always runs.
 - **`Prepare release branch`** (dispatch only) force-resets the `release` staging branch to the tip of `main`, giving Release Please a clean base to work from each cycle.
 - **`Close stale release PRs`** (dispatch only) closes any open PRs whose head is `release-please--branches--release` before creating a new one, preventing duplicate-release failures.
 - **`Compute release-as version`** (dispatch only) reads the current version from `.release-please-manifest.json` and calculates the next semver for `patch`, `minor`, or `major` bumps. For `explicit`, the user-supplied version is used directly.
@@ -677,7 +699,7 @@ jobs:
     steps:
       - name: Generate token
         id: app-token
-        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id:   ${{ secrets.RELEASER_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
@@ -687,6 +709,7 @@ jobs:
         with:
           token:       ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
+          fetch-tags:  true
 
       - name: Prepare release branch
         if: inputs.trigger-event == 'workflow_dispatch'
@@ -827,7 +850,7 @@ jobs:
     steps:
       - name: Generate token
         id: app-token
-        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id:   ${{ secrets.RELEASER_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
@@ -862,35 +885,86 @@ jobs:
           ref:         main
           path:        .shared-ci
 
-      - name: Detect released version from manifest diff
+      - name: Detect released package from manifest diff
         id: parse-release
         run: |
-          git show "HEAD~1:.release-please-manifest.json" > /tmp/prev.json
+          MANIFEST=".release-please-manifest.json"
+          PREV_MANIFEST="$(mktemp)"
+          git show "HEAD~1:$MANIFEST" >"$PREV_MANIFEST"
+
           RELEASES=$(bash .shared-ci/.github/workflows/scripts/parse-release.sh \
-            manifest-diff .release-please-manifest.json /tmp/prev.json)
-          echo "releases=$RELEASES" >> "$GITHUB_OUTPUT"
+            manifest-diff "$MANIFEST" "$PREV_MANIFEST")
+
+          echo "Detected releases:"
+          jq -r '.[] | "  - \(.tag_name)"' <<<"$RELEASES"
+          echo "releases=$RELEASES" >>"$GITHUB_OUTPUT"
 
       - name: Create signed tag and draft GitHub release
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO:     ${{ github.repository }}
         run: |
-          echo '${{ steps.parse-release.outputs.releases }}' | jq -c '.[]' | while read -r ENTRY; do
-            VERSION=$(jq -r '.version'  <<<"$ENTRY")
-            TAG=$(jq -r '.tag_name'     <<<"$ENTRY")
+          RELEASES='${{ steps.parse-release.outputs.releases }}'
 
-            # GPG-signed tag. Pushing it with the App token (not GITHUB_TOKEN)
-            # is what triggers the publish workflow.
-            git tag -s "$TAG" -m "Release ${TAG}"
-            git push origin "$TAG"
+          echo "$RELEASES" | jq -c '.[]' | while read -r ENTRY; do
+            PKG=$(jq -r '.component'     <<<"$ENTRY")
+            VERSION=$(jq -r '.version'   <<<"$ENTRY")
+            TAG_NAME=$(jq -r '.tag_name' <<<"$ENTRY")
 
-            # Release notes = CHANGELOG section (parse-release.sh) + GitHub's
-            # auto-generated notes for the same range.
+            # Root component "." → CHANGELOG.md + v* tags at repo root. The
+            # non-root branch keeps this forward-compatible with monorepos.
+            if [[ "$PKG" == "." ]]; then
+              CHANGELOG="CHANGELOG.md";       TAG_GLOB="v*"
+            else
+              CHANGELOG="${PKG}/CHANGELOG.md"; TAG_GLOB="${PKG}/v*"
+            fi
+
+            # Notes from the matching CHANGELOG section (unit-tested helper).
             NOTES=$(bash .shared-ci/.github/workflows/scripts/parse-release.sh \
-              changelog-notes CHANGELOG.md "$VERSION")
+              changelog-notes "$CHANGELOG" "$VERSION")
 
-            # Draft release — undrafted later by the publish workflow on success.
-            gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes "$NOTES" --draft
+            # GPG-signed tag (idempotent). Pushing with the App token — not
+            # GITHUB_TOKEN — is what triggers the publish workflow.
+            if git rev-parse "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
+              echo "Tag $TAG_NAME already exists — skipping tag creation."
+            else
+              git tag -s "$TAG_NAME" -m "Release ${TAG_NAME}"
+              git push origin "$TAG_NAME"
+            fi
+
+            # Previous tag so auto-notes only cover commits since last release.
+            git fetch --tags --quiet origin || true
+            PREV_TAG=$(git tag --list "$TAG_GLOB" --sort=-v:refname \
+              | grep -vFx "$TAG_NAME" | head -n1 || true)
+
+            GEN_PAYLOAD=$(jq -nc \
+              --arg tag "$TAG_NAME" --arg target "main" --arg prev "$PREV_TAG" \
+              '{tag_name: $tag, target_commitish: $target}
+                + (if $prev != "" then {previous_tag_name: $prev} else {} end)')
+
+            AUTO_NOTES=$(gh api --method POST \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${REPO}/releases/generate-notes" \
+              --input - <<<"$GEN_PAYLOAD" --jq '.body' 2>/dev/null || true)
+
+            if [[ -n "$AUTO_NOTES" ]]; then
+              NOTES=$(printf '%s\n\n%s\n' "$NOTES" "$AUTO_NOTES")
+            fi
+
+            # Pre-release suffix (e.g. -beta.1) → mark as pre-release.
+            PRERELEASE_FLAG=()
+            if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              PRERELEASE_FLAG=(--prerelease)
+            fi
+
+            # Draft release — undrafted by the publish workflow on success.
+            if gh release view "$TAG_NAME" --repo "$REPO" >/dev/null 2>&1; then
+              gh release edit "$TAG_NAME" --repo "$REPO" \
+                --title "$TAG_NAME" --notes "$NOTES" --draft "${PRERELEASE_FLAG[@]}"
+            else
+              gh release create "$TAG_NAME" --repo "$REPO" \
+                --title "$TAG_NAME" --notes "$NOTES" --draft "${PRERELEASE_FLAG[@]}"
+            fi
           done
 
       # Reset the release branch back to main so the next cycle starts clean.
@@ -1153,7 +1227,7 @@ The standard Release Please override mechanism pushes an empty `Release-As` comm
   │        Human reviews + merges           │  ← normal PR review, no bypass needed
   └─────────────────────────────────────────┘
            │
-           ├─── merge commit starts with "chore: release" ──────────────────────┐
+           ├─── merge commit starts with "release:" ────────────────────────────┐
            │                                                                     │
            │  push to main trigger fires                                         │  any other merge
            ▼                                                                     ▼
