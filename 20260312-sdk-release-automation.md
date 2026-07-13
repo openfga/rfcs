@@ -3,7 +3,7 @@
 - **Name:** Release Automation - SDKs
 - **Start Date:** 2026-03-12
 - **Author(s):** [@SoulPancake](https://github.com/SoulPancake)
-- **Status:** Draft 
+- **Status:** Approved 
 - **RFC Pull Request:** https://github.com/openfga/rfcs/pull/33
 - **Relevant Issues:**
   - https://github.com/openfga/sdk-generator/issues/679
