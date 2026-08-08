@@ -62,14 +62,14 @@ A Jackson-3-capable SDK and starter where the common call path (`check`, `write`
 ## What it is
 [what-it-is]: #what-it-is
 
-The proposal ships a **Jackson-3-forward single artifact, delivered through a deprecation bridge**, with the SDK's public serialization surface abstracted behind an SDK-owned `JsonSerializer` interface so the common path and the models never break.
+The proposal ships a Jackson-3-forward single artifact, delivered through a deprecation bridge, with the SDK's public serialization surface abstracted behind an SDK-owned `JsonSerializer` interface so the common path and the models never break.
 
-The key insight that makes this narrow: **Jackson annotations do not move.** Jackson 3 depends on the Jackson 2 annotations artifact (the 3.0 `pom.xml` states "Annotations remain at Jackson 2.x group id"). The roughly 84 `@JsonProperty` / `@JsonInclude` / `@JsonPropertyOrder` / `@JsonValue` / `@JsonCreator` usages across the generated models are therefore static-safe and stay user-facing unchanged. Only databind and core types (`ObjectMapper`, `TypeReference`, `JavaType`, `JsonProcessingException`, feature enums) change namespace.
+The key insight that makes this narrow: Jackson annotations do not move. Jackson 3 depends on the Jackson 2 annotations artifact (the 3.0 `pom.xml` states "Annotations remain at Jackson 2.x group id"). The roughly 84 `@JsonProperty` / `@JsonInclude` / `@JsonPropertyOrder` / `@JsonValue` / `@JsonCreator` usages across the generated models are therefore static-safe and stay user-facing unchanged. Only databind and core types (`ObjectMapper`, `TypeReference`, `JavaType`, `JsonProcessingException`, feature enums) change namespace.
 
 From the perspective of the three personas:
 
 - **The application developer who never touches a mapper** sees nothing change. The common call path exposes no Jackson databind type; the annotated models are unchanged.
-- **The application developer who customizes the mapper** gets, in the bridge release, a deprecation warning pointing at the new `getJsonSerializer()` / `setJsonSerializer(...)` API. Their existing code still compiles and runs. Only at the Jackson 3 major is the old accessor removed, at which point they get a **compile error** (never a runtime failure) and a one-page migration guide. A 0.x LTS line remains as an escape hatch.
+- **The application developer who customizes the mapper** gets, in the bridge release, a deprecation warning pointing at the new `getJsonSerializer()` / `setJsonSerializer(...)` API. Their existing code still compiles and runs. Only at the Jackson 3 major is the old accessor removed, at which point they get a compile error (never a runtime failure) and a one-page migration guide. A 0.x LTS line remains as an escape hatch.
 - **The Spring Boot starter maintainer** gains a dual `@ConditionalOnClass` configuration that hands the SDK a `JsonSerializer` built from whichever mapper Spring Boot auto-configured (`com.fasterxml...ObjectMapper` on SB3, `tools.jackson...JsonMapper` on SB4).
 
 Example deprecation warning in the bridge release:
@@ -83,7 +83,7 @@ warning: [deprecation] getObjectMapper() in ApiClient has been deprecated
 ## How it Works
 [how-it-works]: #how-it-works
 
-Work is sequenced across three repositories, and the dependency chain fixes the order: **`sdk-generator` templates → `java-sdk` → `spring-boot-starter`**. Generated-file changes must originate in `sdk-generator` templates, or the next `sync/sdk-generator` PR reverts hand edits.
+Work is sequenced across three repositories, and the dependency chain fixes the order: `sdk-generator` templates, then `java-sdk`, then `spring-boot-starter`. Generated-file changes must originate in `sdk-generator` templates, or the next `sync/sdk-generator` PR reverts hand edits.
 
 ### Wave 0: the bridge (java-sdk, current Jackson 2 line, non-breaking minor)
 
@@ -92,7 +92,7 @@ Work is sequenced across three repositories, and the dependency chain fixes the 
 - Route `ApiClient` and `FgaError` through the interface. Keep `getObjectMapper()` / `setObjectMapper(ObjectMapper)` / the `ObjectMapper` constructor as `@Deprecated` delegating wrappers: `setObjectMapper(m)` wraps `m` in a `Jackson2JsonSerializer`; `getObjectMapper()` unwraps back to a real Jackson 2 mapper. Add `getJsonSerializer()` / `setJsonSerializer(...)` and an `ApiClient(builder, JsonSerializer)` constructor.
 - Add the SDK type-token streaming overload and deprecate the `TypeReference<StreamResult<T>>` overload plus the `BaseStreamingApi` `TypeReference` constructor.
 - Wrap `throws JsonProcessingException` behind an SDK exception.
-- Gate on a **byte-for-byte wire-parity test**: serialized output must be identical to the current mapper across representative models.
+- Gate on a byte-for-byte wire-parity test: serialized output must be identical to the current mapper across representative models.
 - Definition of done: existing tests pass unchanged, no public signature changes (only additions and deprecations), wire output identical. This release breaks nobody.
 
 Idiom precedent already in the repo: `ApiClient.urlEncode` uses `@Deprecated(forRemoval=true, since=…)`.
@@ -109,7 +109,7 @@ Idiom precedent already in the repo: `ApiClient.urlEncode` uses `@Deprecated(for
 ### Wave B: java-sdk Jackson 3 flip (new major)
 
 - Add `Jackson3JsonSerializer` on `tools.jackson.databind.json.JsonMapper` (using `builderWithJackson2Defaults()` as an aid), mapping each Jackson 2 feature to its Jackson 3 equivalent (`DateTimeFeature`, built-in JavaTime, `EnumFeature`).
-- Remove the deprecated `ObjectMapper` and `TypeReference` methods (or retype — see Unresolved Questions). Demote databind/core to `implementation`; keep `jackson-annotations` on `api`.
+- Remove the deprecated `ObjectMapper` and `TypeReference` methods (or retype; see Unresolved Questions). Demote databind/core to `implementation`; keep `jackson-annotations` on `api`.
 - Resolve the `JsonNullable` path (0 model usages today).
 - Re-run the wire-parity gate under Jackson 3.
 - Release the major with a one-page migration guide and CHANGELOG callout. Keep 0.x as a Jackson 2 / SB3 LTS for security patches.
@@ -138,7 +138,7 @@ Idiom precedent already in the repo: `ApiClient.urlEncode` uses `@Deprecated(for
 | `OpenFgaClient.streamingApiExecutor(TypeReference<…>)` | Removed / retyped at the major | Use the SDK type-token overload (or `Class<T>`) added in the bridge |
 | `throws JsonProcessingException` | Wrapped behind an SDK exception | Catch the SDK exception |
 
-A user who acts on the bridge-release deprecation warnings traverses the entire migration with **zero breaks**. A user who skips the bridge gets a **compile** error at the major, plus a one-page migration guide (import swaps for the mapper surface; a note that annotations are unchanged).
+A user who acts on the bridge-release deprecation warnings traverses the entire migration with zero breaks. A user who skips the bridge gets a compile error (not a runtime failure) at the major, plus a one-page migration guide (import swaps for the mapper surface; a note that annotations are unchanged).
 
 **No wire-format break for anyone:** the byte-for-byte parity gate (M3) runs in Waves 0 and B, so no user observes a changed payload (dates, null omission, field order, unknown-property tolerance).
 
@@ -183,7 +183,7 @@ The SDK and starter remain unusable on Spring Boot 4 as it becomes the default, 
 ## Prior Art
 [prior-art]: #prior-art
 
-- **`jackson-databind-nullable` [PR #117](https://github.com/OpenAPITools/jackson-databind-nullable/pull/117)** delivers dual Jackson 2/3 support from a single artifact via a `ServiceLoader` SPI that auto-selects whichever Jackson is present — direct precedent for the coexistence model, and the mechanism the starter's nullable dependency (0.2.10+) already uses.
+- **`jackson-databind-nullable` [PR #117](https://github.com/OpenAPITools/jackson-databind-nullable/pull/117)** delivers dual Jackson 2/3 support from a single artifact via a `ServiceLoader` SPI that auto-selects whichever Jackson is present: direct precedent for the coexistence model, and the mechanism the starter's nullable dependency (0.2.10+) already uses.
 - **Spring Boot 4's own design** keeps both a Jackson 3 `JsonMapper` bean and (when `spring-boot-jackson2` is present) a Jackson 2 `ObjectMapper` bean, and documents a single starter artifact serving both baselines via `@ConditionalOnClass`. This RFC follows that pattern for Wave C.
 - **openapi-generator** ships an opt-in `useJackson3` flag for Java 17+ targets; if a spike shows it covers the `native` library and custom templates, it can drive the generated-code namespace switch rather than hand-patching.
 - **Existing OpenFGA SDK deprecation idiom:** `ApiClient.urlEncode` already uses `@Deprecated(forRemoval=true, since=…)`, so the bridge follows an established in-repo convention.
