@@ -2,11 +2,11 @@
 [meta]: #meta
 - **Name:** Jackson 3 support for the Java SDK and Spring Boot starter
 - **Start Date:** 2026-08-08
-- **Author(s):** [@curfew-marathon](https://github.com/curfew-marathon) <!-- confirm handle before opening the PR -->
+- **Author(s):** [@curfew-marathon](https://github.com/curfew-marathon)
 - **Status:** Draft
 - **RFC Pull Request:** (leave blank)
 - **Relevant Issues:**
-  - https://github.com/openfga/java-sdk/issues/300 (see also #349)
+  - https://github.com/openfga/java-sdk/issues/300 (see also https://github.com/openfga/java-sdk/issues/349)
   - https://github.com/openfga/spring-boot-starter/pull/183
 - **Supersedes:** N/A
 
@@ -25,7 +25,7 @@
 ## Summary
 [summary]: #summary
 
-The OpenFGA Java SDK and Spring Boot starter are pinned to Jackson 2.x. Spring Boot 4.0 moves its auto-configuration baseline to Jackson 3.0 (the `tools.jackson.*` namespace) and ships Jackson 2 support only in a deprecated form. This RFC proposes migrating the SDK to Jackson 3 through a deprecation bridge: an SDK-owned `JsonSerializer` interface is introduced on the current Jackson 2 line as a non-breaking minor, the leaking `ObjectMapper` accessors are deprecated but kept working as delegating wrappers, and the switch to Jackson 3 happens in a later major. The result is that the roughly 99% of users who never touch a mapper see no change, and users who do get a full release of warning plus a one-page guide instead of a runtime surprise. The 0.x line is retained as a Jackson 2 / Spring Boot 3 LTS.
+The OpenFGA Java SDK and Spring Boot starter are pinned to Jackson 2.x. Spring Boot 4.0 moves its auto-configuration baseline to Jackson 3.0 (the `tools.jackson.*` namespace) and ships Jackson 2 support only in a deprecated form. This RFC proposes migrating the SDK to Jackson 3 through a deprecation bridge: an SDK-owned `JsonSerializer` interface is introduced on the current Jackson 2 line as a non-breaking minor, the leaking `ObjectMapper` accessors are deprecated but kept working as delegating wrappers, and the switch to Jackson 3 happens in a later major. The result is that the roughly 99% of users who never touch a mapper see no change, and users who do get a full release of warnings plus a one-page guide instead of a runtime surprise. The 0.x line is retained as a Jackson 2 / Spring Boot 3 LTS.
 
 ## Definitions
 [definitions]: #definitions
@@ -48,7 +48,7 @@ Issue [#300](https://github.com/openfga/java-sdk/issues/300) reports that the SD
 1. **The `ObjectMapper` accessors.** `ApiClient.getObjectMapper()`, `setObjectMapper(ObjectMapper)`, and the `ApiClient(HttpClient.Builder, ObjectMapper)` constructor expose `com.fasterxml.jackson.databind.ObjectMapper` on public signatures. In Jackson 3 that type changes namespace with no shared supertype, so a single signature cannot serve both.
 2. **The transitive classpath leak.** `build.gradle` declares `jackson-core`, `jackson-annotations`, and `jackson-databind` as `api` scope, forcing Jackson 2 onto every consumer's compile classpath. Under a Spring Boot 4 BOM this collides with the Jackson 3 stack.
 
-The Spring Boot starter is the concrete consumer feeling this: a Boot 4 application resolves Jackson to `tools.jackson:3.x`, while the SDK still requires Jackson 2, producing version conflicts.
+The Spring Boot starter is the concrete consumer feeling this: a Boot 4 application resolves Jackson to `tools.jackson.core:jackson-databind:3.x`, while the SDK still requires Jackson 2, producing version conflicts.
 
 ### What use cases does it support?
 
