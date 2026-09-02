@@ -3,7 +3,7 @@
 - **Name:** Jackson 3 support for the Java SDK and Spring Boot starter
 - **Start Date:** 2026-08-08
 - **Author(s):** [@curfew-marathon](https://github.com/curfew-marathon)
-- **Status:** Draft
+- **Status:** Approved
 - **RFC Pull Request:** (leave blank)
 - **Relevant Issues:**
   - https://github.com/openfga/java-sdk/issues/300 (see also https://github.com/openfga/java-sdk/issues/349)
