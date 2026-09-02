@@ -97,6 +97,34 @@ Work is sequenced across three repositories, and the dependency chain fixes the 
 
 Idiom precedent already in the repo: `ApiClient.urlEncode` uses `@Deprecated(forRemoval=true, since=…)`.
 
+#### Proposed API surface
+
+The key types and signatures introduced in Wave 0:
+
+```java
+// New interface (sdk-owned, no Jackson type in any signature)
+public interface JsonSerializer {
+    byte[] writeValueAsBytes(Object value) throws SdkSerializationException;
+    <T> T readValue(byte[] src, Class<T> type) throws SdkSerializationException;
+    <T> T readValue(String src, Class<T> type) throws SdkSerializationException;
+    <T> T readValue(byte[] src, SdkTypeToken<T> typeToken) throws SdkSerializationException;
+}
+
+// Jackson 2 implementation (bridge release, internal)
+class Jackson2JsonSerializer implements JsonSerializer { ... }
+
+// ApiClient additions (bridge release)
+ApiClient(HttpClient.Builder builder, JsonSerializer serializer)   // new constructor
+JsonSerializer getJsonSerializer()                                  // new
+void setJsonSerializer(JsonSerializer serializer)                   // new
+
+// ApiClient deprecated wrappers (retained, bridge release)
+@Deprecated ObjectMapper getObjectMapper()        // unwraps to J2 mapper only when Jackson2JsonSerializer is active;
+                                                   // throws UnsupportedOperationException if a non-Jackson serializer is set
+@Deprecated void setObjectMapper(ObjectMapper m)  // wraps m in Jackson2JsonSerializer
+@Deprecated ApiClient(HttpClient.Builder b, ObjectMapper m)
+```
+
 ### Wave A: generator templates (sdk-generator)
 
 - Reproduce the interface routing for the two generated carriers (`api.mustache` → `OpenFgaApi`, `BaseStreamingApi.mustache`) so regeneration preserves it.
@@ -116,12 +144,13 @@ Idiom precedent already in the repo: `ApiClient.urlEncode` uses `@Deprecated(for
 
 ### Wave C: spring-boot-starter (gated on the released SDK major)
 
-- Split into `-autoconfigure` and `-starter` modules with optional Jackson deps.
+- Split into `-autoconfigure` and `-starter` modules with optional Jackson deps (following Spring's recommended pattern: the split allows marking Jackson deps optional, which is required for `@ConditionalOnClass` to branch on Jackson version without forcing a transitive dependency on either).
 - Add dual `@ConditionalOnClass` configuration: a Jackson 2 path injecting `ObjectProvider<com.fasterxml...ObjectMapper>` and a Jackson 3 path injecting `ObjectProvider<tools.jackson...JsonMapper>`, each handing the SDK a `JsonSerializer`. Replace `createDefaultObjectMapper()` with per-version factories.
 - Keep explicit `com.fasterxml` Jackson coordinates rather than relying on `spring-boot-starter-json`, which resolves to Jackson 3 under a Boot 4 BOM and collides with the still-Jackson-2 SDK on prior waves.
 - Bump `jackson-databind-nullable` to 0.2.10+ (dual J2/J3 via ServiceLoader SPI).
 - Fix the two `PropertyMapper$Source.as(Function)` call sites (`toCredentials`, `toTelemetryConfiguration`), re-signatured in SB 4.0, by moving the conversion into the `.to(...)` lambda rather than removing `PropertyMapper`.
 - Address the changed `testcontainers` dependency coordinates under the 4.1 baseline.
+- Migrate `OpenFgaInitializer`: its constructor takes `ObjectMapper` directly and calls `.addMixIn()` for two mixin classes (`ClientTupleKeyMixin`, `ClientTupleKeyWithoutConditionMixin`) that remap the `object` JSON field. The mixin annotations (`@JsonSetter`) are static-safe and do not change namespace in Jackson 3. Under the dual `@ConditionalOnClass` configuration, each factory supplies the version-appropriate mapper to the initializer; the `.addMixIn()` call shape is identical, with `tools.jackson.databind.ObjectMapper` substituted on the Jackson 3 path.
 - Add a Boot 4 BOM row to the CI matrix (today it builds only the 3.4 baseline) plus an SB4 + Jackson 3 integration test, keeping the SB3 + Jackson 2 one.
 - Definition of done: the same starter jar boots green on both SB3/Jackson 2 and SB4/Jackson 3.
 
@@ -187,14 +216,16 @@ The SDK and starter remain unusable on Spring Boot 4 as it becomes the default, 
 - **Spring Boot 4's own design** keeps both a Jackson 3 `JsonMapper` bean and (when `spring-boot-jackson2` is present) a Jackson 2 `ObjectMapper` bean, and documents a single starter artifact serving both baselines via `@ConditionalOnClass`. This RFC follows that pattern for Wave C.
 - **openapi-generator** ships an opt-in `useJackson3` flag for Java 17+ targets; if a spike shows it covers the `native` library and custom templates, it can drive the generated-code namespace switch rather than hand-patching.
 - **Existing OpenFGA SDK deprecation idiom:** `ApiClient.urlEncode` already uses `@Deprecated(forRemoval=true, since=…)`, so the bridge follows an established in-repo convention.
+- **[Handlebars.java](https://github.com/jknack/handlebars.java)** publishes separate `handlebars-jackson` and `handlebars-jackson3` adapter jars: a concrete example of the adapter-jars pattern (Approach C in Alternatives).
+- **[Jersey](https://github.com/eclipse-ee4j/jersey)** uses separate `json-jackson` and `json-jackson3` modules: the same pattern applied to a Jakarta EE-adjacent project.
 
 ## Unresolved Questions
 [unresolved-questions]: #unresolved-questions
 
-1. **Feature parity for SB3 / Jackson 2 users.** Accept a 0.x LTS on security-only patches with a single Jackson-3-forward major (recommended), or keep shipping features to Jackson 2 via the adapter-jar architecture? This is the one decision that changes the architecture.
+1. **Feature parity for SB3 / Jackson 2 users.** Provisionally closed: security-only patches on the 0.x line, single Jackson-3-forward major. Confirmed by reviewer input; escalation to the adapter-jar architecture remains documented in Alternatives if new-feature demand on the Jackson 2 line materializes post-release.
 2. **The mapper accessors at the flip.** Remove them entirely (cleanest), or retype to `tools.jackson.*` (still a source break, but a familiar shape)?
 3. **The `TypeReference` rider.** SDK-owned type token (recommended), drop the generic overload entirely and keep only `Class<T>` (zero known external callers), or retype to Jackson 3?
-4. **Starter versioning.** Single artifact spanning SB3 and SB4 via conditionals (recommended), or a dedicated SB4 major line?
+4. **Starter versioning.** Provisionally closed: a new major of `spring-boot-starter` ships alongside the SDK major, using the single-artifact-via-conditionals approach. The new major is warranted because the `ObjectProvider<ObjectMapper>` injection path is removed in Wave C.
 5. **The `useJackson3` generator flag.** Adopt it as the Jackson 3 driver if the spike shows sufficient coverage, or hand-patch templates? (Resolved through implementation.)
 6. **`JsonNullable`.** Confirmed zero usages: drop it on the Jackson 3 path, or keep it for forward compatibility?
 7. **Out of scope for this RFC:** the specific CI matrix design for the starter (Boot 4 BOM row, JDK version injection) is an implementation detail tracked on PR [#183](https://github.com/openfga/spring-boot-starter/pull/183) and its follow-up issue.
