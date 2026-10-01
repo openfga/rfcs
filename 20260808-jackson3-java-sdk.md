@@ -4,7 +4,7 @@
 - **Start Date:** 2026-08-08
 - **Author(s):** [@curfew-marathon](https://github.com/curfew-marathon)
 - **Status:** Approved
-- **RFC Pull Request:** (leave blank)
+- **RFC Pull Request:** https://github.com/openfga/rfcs/pull/36
 - **Relevant Issues:**
   - https://github.com/openfga/java-sdk/issues/300 (see also https://github.com/openfga/java-sdk/issues/349)
   - https://github.com/openfga/spring-boot-starter/pull/183
@@ -140,8 +140,8 @@ void setJsonSerializer(JsonSerializer serializer)                   // new
 ### Wave B: java-sdk Jackson 3 flip (v0.11.0)
 
 - Add `Jackson3JsonSerializer` on `tools.jackson.databind.json.JsonMapper` (using `builderWithJackson2Defaults()` as an aid), mapping each Jackson 2 feature to its Jackson 3 equivalent (`DateTimeFeature`, built-in JavaTime, `EnumFeature`).
-- Remove the deprecated `ObjectMapper` and `TypeReference` methods (or retype; see Unresolved Questions). Demote databind/core to `implementation`; keep `jackson-annotations` on `api`.
-- Resolve the `JsonNullable` path (0 model usages today).
+- Remove the deprecated `ObjectMapper` and `TypeReference` methods. Demote databind/core to `implementation`; keep `jackson-annotations` on `api`.
+- Drop `jackson-databind-nullable` (0 model usages).
 - Re-run the wire-parity gate under Jackson 3.
 - Release v0.11.0 with a one-page migration guide and CHANGELOG callout. Keep the 0.10.x line for Jackson 2 / SB3 security patches.
 
@@ -167,12 +167,12 @@ void setJsonSerializer(JsonSerializer serializer)                   // new
 | `ApiClient.getObjectMapper()` | Removed in v0.11.0 | Deprecated in v0.10.1; migrate to `getJsonSerializer()` |
 | `ApiClient.setObjectMapper(ObjectMapper)` | Removed in v0.11.0 | Deprecated in v0.10.1; migrate to `setJsonSerializer(...)` or the `JsonSerializer` constructor |
 | `ApiClient(HttpClient.Builder, ObjectMapper)` | Removed in v0.11.0 | Deprecated in v0.10.1; use `ApiClient(builder, JsonSerializer)` |
-| `OpenFgaClient.streamingApiExecutor(TypeReference<…>)` | Removed / retyped in v0.11.0 | Use the SDK type-token overload (or `Class<T>`) added in v0.10.1 |
+| `OpenFgaClient.streamingApiExecutor(TypeReference<…>)` | Removed in v0.11.0 | Use the `SdkTypeToken` overload added in v0.10.1, or the `Class<T>` overload |
 | `throws JsonProcessingException` | Wrapped behind an SDK exception | Catch the SDK exception |
 
 A user who acts on the v0.10.1 deprecation warnings traverses the entire migration with zero breaks. A user who skips v0.10.1 gets a compile error (not a runtime failure) at v0.11.0, plus a one-page migration guide (import swaps for the mapper surface; a note that annotations are unchanged).
 
-**No wire-format break for anyone:** the byte-for-byte parity gate (M3) runs in Waves 0 and B, so no user observes a changed payload (dates, null omission, field order, unknown-property tolerance).
+**No wire-format break for anyone:** the byte-for-byte parity gate runs in Waves 0 and B, so no user observes a changed payload (dates, null omission, field order, unknown-property tolerance).
 
 **Transitive classpath (all consumers):** demoting databind/core to `implementation` removes Jackson 2 from consumers' compile classpath. Consumers who relied on that transitive dependency must declare Jackson directly; this is documented in the guide.
 
@@ -185,9 +185,9 @@ A user who acts on the v0.10.1 deprecation warnings traverses the entire migrati
 
 - Maintaining two serialization implementations (`Jackson2JsonSerializer`, `Jackson3JsonSerializer`) plus the interface adds surface area.
 - A byte-for-byte parity test is a real maintenance and authoring cost, though it is what guarantees an invisible wire.
-- The `JsonSerializer` abstraction adds one indirection for the small set of power users who legitimately want direct mapper access; they must go through SDK methods or stay on the Jackson 2 0.10.x line.
+- The `JsonSerializer` abstraction adds one indirection for the small set of power users who legitimately want direct mapper access; they must go through SDK methods or stay on the 0.10.x line.
 - If maintainers later need to keep shipping features (not just security fixes) to Jackson 2 users, this single-artifact approach forces a re-architecture toward adapter jars (see Alternatives).
-- Cross-repo sequencing (generator → SDK → starter) means the starter's Spring Boot 4 support cannot land until java-sdk v0.11.0 is published.
+- Cross-repo sequencing (generator → SDK → starter) gates the starter's Spring Boot 4 support on java-sdk v0.11.0.
 
 ## Alternatives
 [alternatives]: #alternatives
@@ -226,9 +226,9 @@ The SDK and starter remain unusable on Spring Boot 4 as it becomes the default, 
 [unresolved-questions]: #unresolved-questions
 
 1. **Feature parity for SB3 / Jackson 2 users.** Provisionally closed: security-only patches on the 0.10.x line, single Jackson-3-forward SDK artifact. Confirmed by reviewer input; escalation to the adapter-jar architecture remains documented in Alternatives if new-feature demand on the Jackson 2 line materializes post-release.
-2. **The mapper accessors at the flip.** Remove them entirely (cleanest), or retype to `tools.jackson.*` (still a source break, but a familiar shape)?
-3. **The `TypeReference` rider.** SDK-owned type token (recommended), drop the generic overload entirely and keep only `Class<T>` (zero known external callers), or retype to Jackson 3?
+2. **The mapper accessors at the flip.** Resolved in v0.11.0: removed entirely rather than retyped to `tools.jackson.*`.
+3. **The `TypeReference` rider.** Resolved in v0.11.0: replaced by the SDK-owned `SdkTypeToken`; the `Class<T>` overload remains.
 4. **Starter versioning.** Closed: `spring-boot-starter` follows the same pre-1.0 policy. The Wave C cutover removes the `ObjectProvider<ObjectMapper>` injection path, so it ships as v0.5.0, after java-sdk v0.11.0, using the single-artifact-via-conditionals approach.
 5. **The `useJackson3` generator flag.** Adopt it as the Jackson 3 driver if the spike shows sufficient coverage, or hand-patch templates? (Resolved through implementation.)
-6. **`JsonNullable`.** Confirmed zero usages: drop it on the Jackson 3 path, or keep it for forward compatibility?
+6. **`JsonNullable`.** Resolved in v0.11.0: dropped, along with the `jackson-databind-nullable` dependency.
 7. **Out of scope for this RFC:** the specific CI matrix design for the starter (Boot 4 BOM row, JDK version injection) is an implementation detail tracked on PR [#183](https://github.com/openfga/spring-boot-starter/pull/183) and its follow-up issue.
