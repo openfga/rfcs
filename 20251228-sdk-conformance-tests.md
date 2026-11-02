@@ -6,7 +6,7 @@
 - **Start Date:** 2025-12-28
 - **Authors**: @rhamzeh, @emilic
 - **Status:** Draft <!-- Acceptable values: Draft, Approved, On Hold, Superseded -->
-- **RFC Pull Request:** https://github.com/openfga/rfcs/pull/<TBD>
+- **RFC Pull Request:** https://github.com/openfga/rfcs/pull/34
 - **Relevant Issues:**
 - **Supersedes:** N/A
 - **Target repos:** `openfga/{go,js,dotnet,java,python}-sdk`, new `openfga/sdk-conformance`
