@@ -123,12 +123,13 @@ In Example 1, resolve makes one group (`user:anne`, `viewer`, `document:roadmap`
 1. **What counts as an alias:** only a relation written as exactly one other relation, `define a: b` (in JSON, a lone `computedUserset`). Nothing else is an alias: not direct types (`[user]`), `or`, `and`, `but not`, `from`, or a union with a single child.
 2. **Chains:** follow aliases until you reach a relation that isn't one. If the chain points to a relation that doesn't exist, or loops, don't merge it. A valid model shouldn't contain these, so this is only a safety net.
 3. **Groups:** checks merge only if the final relation, user, object, context and contextual tuples all match. This also merges exact repeats.
-4. **"Match" means equal as the server sees it:**
-   - Numbers compare by value: `1` and `1.0` match.
+4. **"Match" means the server would get exactly the same values.** When unsure, don't merge. Sending a check unmerged is always safe.
+   - Numbers match only if they're the same double, including the sign: `1` and `1.0` match, `0` and `-0.0` don't (a condition can tell them apart).
    - Types matter: `true` and `1` don't match.
    - Key order in objects doesn't matter.
    - Order and repeats in lists do matter.
-   - Contextual tuples must be the same, in the same order.
+   - Contextual tuples must be the same, in the same order, including any condition context on them.
+   - These rules apply at every level of nested objects and lists.
 5. **Always sent as is, never merged:**
    - **Userset users** (like `team:eng#member`). For these, an alias and its final relation can get different answers, and the answer also differs between the server's check algorithms. For example, asking whether `document:1#can_edit` has `can_edit` on `document:1` is true on the older algorithm but false on the newer weighted-graph one.
    - **Wildcard users** (`user:*`), until confirmed safe.
@@ -166,6 +167,7 @@ SDKs that can call `language` use it directly. The rest (like Python today) port
 
 - A new file in `openfga/language`, `tests/data/equivalent-checks-cases.yaml`, in the same style as the existing test-case files.
 - Each case has a model, the input checks, and the expected groups.
+- Cases must cover the tricky matches above: `1` vs `1.0`, `0` vs `-0.0`, `true` vs `1`, key order, list order, and nested values.
 - Each SDK copies the file from a pinned `language` commit and runs it in CI.
 
 A case could look like this (the final format will be settled during implementation):
