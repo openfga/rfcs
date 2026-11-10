@@ -12,12 +12,12 @@
 # Summary
 [summary]: #summary
 
-A new opt-in BatchCheck option for the OpenFGA SDKs. When it's on, the SDK finds checks that are certain to get the same answer, sends each of them once, and copies the answer back to every original check. Two cases qualify:
+A new opt-in BatchCheck option, `merge_equivalent_checks`, for the OpenFGA SDKs. When it's on, the SDK finds checks that are certain to get the same answer, sends each of them once, and copies the answer back to every original check. In this first phase, two cases qualify:
 
 - **Aliases:** relations defined as just another relation, like `define can_share: can_view`.
 - **Exact repeats:** the same check passed more than once.
 
-The merge rules live in `openfga/language` (Go first), with shared test cases that every SDK must pass. The SDK caches the model, so it's read once per model ID, and the response reports how many checks were actually sent. The Python SDK ships it first, as a beta.
+The part that reads the model (Resolve) lives in `openfga/language` (Go first), with shared test cases that every SDK must pass. The SDK caches the model, so it's read once per model ID, and reports how many checks it actually sent. The Python SDK ships it first, as a beta. Later phases are listed in [Phases](#phases).
 
 # Definitions
 [definitions]: #definitions
@@ -42,10 +42,10 @@ The merge rules live in `openfga/language` (Go first), with shared test cases th
 
 **For application developers using an OpenFGA SDK:**
 
-- A new BatchCheck option, off by default. The name is still open (see [Unresolved Questions](#unresolved-questions)).
+- A new BatchCheck option, `merge_equivalent_checks`, off by default. Each SDK uses its own casing (see [The option in each SDK](#the-option-in-each-sdk)).
 - It needs an authorization model ID, either set on the client or passed in the call. Without one, the SDK raises an error before sending anything. The SDK reads that model once and caches it.
 - You still get one result for each check you passed in, matched by your correlation IDs.
-- The response also says how many checks were actually sent (`checks_sent`, name to be decided), so you can track usage against your own limits. It's always set. With the option off, it equals the number of checks you passed in.
+- The SDK reports how many checks it actually sent (see [Telemetry](#telemetry)).
 - Nothing else about calling BatchCheck changes.
 
 ## Example 1: three checks become one
@@ -70,11 +70,11 @@ checks = [
 ]
 response = await fga_client.batch_check(
     ClientBatchCheckRequest(checks=checks),
-    {"merge_equivalent_checks": True},  # option name to be decided
+    {"merge_equivalent_checks": True},
 )
 ```
 
-All three relations end at `viewer`. The SDK sends **1 check** (`user:anne`, `viewer`, `document:roadmap`) instead of 3. The response still has 3 results (`view`, `share` and `full-name`), each with the answer from that one check, and `checks_sent` is 1.
+All three relations end at `viewer`. The SDK sends **1 check** (`user:anne`, `viewer`, `document:roadmap`) instead of 3. The response still has 3 results (`view`, `share` and `full-name`), each with the answer from that one check.
 
 ## Example 2: what merges and what doesn't
 
@@ -94,15 +94,30 @@ type document
     define can_share: can_view
 ```
 
+All checks are on `document:1`.
+
 | # | User | Relation | Ends at | What the SDK sends |
 |---|---|---|---|---|
 | 1 | `user:anne` | `can_view` | `can_view` (uses `or`, so the chain stops) | one `can_view` check for #1 and #2 |
 | 2 | `user:anne` | `can_share` | `can_view` | merged into #1 |
-| 3 | `user:anne` | `can_edit` | `editor` | sent as is (nothing to merge with) |
-| 4 | `user:bob` | `can_share` | `can_view` | sent as is (different user) |
-| 5 | `team:eng#member` | `can_share` | n/a | sent as is (userset users are never merged) |
+| 3 | `user:anne` | `can_edit` | `editor` | `editor` (nothing to merge with) |
+| 4 | `user:bob` | `can_share` | `can_view` | `can_view` (different user) |
+| 5 | `team:eng#member` | `can_share` | `can_view` | `can_view` (different user) |
 
-5 checks, 4 sent. `can_view` includes `can_edit`, but #1 and #3 end at different relations, so they aren't merged. Using that kind of overlap is out of scope.
+5 checks, 4 sent. Every check goes out with its final relation, even when nothing merges with it (#3, #4, #5). `can_view` includes `can_edit`, but #1 and #3 end at different relations, so they aren't merged.
+
+## The option in each SDK
+
+The same option in every SDK, so later implementations match `language` and Python:
+
+| SDK | How you turn it on | Type and default | Per-call count in the response (if kept) |
+|---|---|---|---|
+| Python | `batch_check(body, {"merge_equivalent_checks": True})` | `bool`, `False` | `checks_sent` |
+| Go | `BatchCheckOptions{MergeEquivalentChecks: openfga.PtrBool(true)}` | `*bool`, `nil` means off | `ChecksSent` |
+| JS | `batchCheck(body, { mergeEquivalentChecks: true })` | `boolean`, `false` | `checksSent` |
+| Java | `new ClientBatchCheckOptions().mergeEquivalentChecks(true)` | `Boolean`, `false` | `getChecksSent()` |
+
+Everything else is the same in every SDK: the merge rules, errors, telemetry names and shared tests. Other SDKs (like .NET) follow the same pattern.
 
 # How it Works
 [how-it-works]: #how-it-works
@@ -113,10 +128,11 @@ When the option is on, the SDK:
 
 1. Fixes the store ID and model ID for the whole call. Reading the model and sending the checks must use the same model, or merges could be wrong.
 2. Validates every correlation ID you passed in (see [Errors](#errors)), so merging can't hide an invalid one.
-3. Gets the model from the [model cache](#model-cache), reading it from the server only the first time.
+3. Gets the model from the [model cache](#model-cache). Only the first call for a model reads it from the server, and calls running in parallel share that one read. If the model can't be read, the SDK skips steps 4 and 6 and sends the checks unmerged, as it does today (see [Errors](#errors)).
 4. **Resolve:** groups the checks and builds the list to send.
 5. Sends that list in batches, as it does today. Grouping covers all checks in the call before they're split into batches, so checks that would land in different batches can still merge.
 6. **Expand:** copies each answer back to every check in its group.
+7. Records [telemetry](#telemetry).
 
 In Example 1, resolve makes one group (`user:anne`, `viewer`, `document:roadmap`) holding `view`, `share` and `full-name`. The SDK sends one check, and expand copies its answer to all three.
 
@@ -126,18 +142,22 @@ In Example 1, resolve makes one group (`user:anne`, `viewer`, `document:roadmap`
 2. **Chains:** follow aliases until you reach a relation that isn't one. If the chain points to a relation that doesn't exist, or loops, don't merge it. A valid model shouldn't contain these, so this is only a safety net.
 3. **Groups:** checks merge only if the final relation, user, object, context and contextual tuples all match. This also merges exact repeats.
 4. **"Match" means the server would get exactly the same values.** When unsure, don't merge. Sending a check unmerged is always safe.
+   - Context must match exactly. A missing or extra field means no match, and strings must match byte for byte (one extra space is a different value). No context doesn't match an empty context (`{}`).
    - Numbers match only if they're the same double, including the sign: `1` and `1.0` match, `0` and `-0.0` don't (a condition can tell them apart).
    - Types matter: `true` and `1` don't match.
    - Key order in objects doesn't matter.
-   - Order and repeats in lists inside context do matter.
-   - Contextual tuples can be in any order (the server ignores their order too), but must otherwise be the same, including any condition context on them. Repeats still count.
+   - Order and repeats in lists do matter.
+   - Contextual tuples can be in any order (the server ignores their order too). Each one needs the exact same user, relation, object, condition name and condition context, or no condition on both. Repeats still count.
    - These rules apply at every level of nested objects and lists.
-5. **Always sent as is, never merged:**
-   - **Userset users** (like `team:eng#member`). For these, an alias and its final relation can get different answers, and the answer also differs between the server's check algorithms. For example, asking whether `document:1#can_edit` has `can_edit` on `document:1` is true on the older algorithm but false on the newer weighted-graph one.
-   - **Wildcard users** (`user:*`). Checks for them are rare, so they're left out to keep the rules simple.
-   - **Anything not in the model:** an unknown object type, relation or user type. The server returns its usual error.
-6. **A group with one check** is sent as is, with the caller's relation and correlation ID.
-7. **A merged group** is sent with the final relation and a new correlation ID generated by the SDK. It never reuses one of the caller's IDs.
+5. **Sent as is, with the caller's relation and correlation ID:**
+   - **A userset on the same object, whose relation is anywhere in the chain** (including the one you asked for). With Example 1's model, take `document:roadmap#can_view` checking `can_share` on `document:roadmap`. The server's older check algorithm says a userset always has its own relation on its own object, and it applies this at every step of a chain. So `can_share → can_view` hits that rule and returns true, while the merged `viewer` check would be answered from tuples. The newer weighted-graph algorithm doesn't have this rule. This is the only special userset case: other usersets, like `team:eng#member`, merge like any user, and so do wildcard users (`user:*`).
+   - **Anything not in the model:** an unknown object type, relation or user type. The server returns its usual error, so it stays the single source of these errors.
+6. **Every group is sent with its final relation**, a group of one too. For example, a lone `can_share` check goes out as `can_view`. The server then sees fewer distinct relations, so it can cache better.
+7. **Correlation IDs:**
+   - A group of one keeps the caller's ID.
+   - A merged group gets an ID generated by the SDK. The sent check stands for the whole group, so reusing one caller's ID would make its answer or error look like it belongs to that one check.
+   - Generated IDs follow the group's order in the call (for example `merged-1`, `merged-2`). They follow the server's ID rule and never match a caller's ID in the same call. If one would, the SDK skips to the next free one.
+8. **Deterministic from the start:** the same model and the same checks, in the same order, always give the same groups, the same checks to send in the same order, and the same IDs.
 
 ## Expand rules
 
@@ -147,12 +167,15 @@ In Example 1, resolve makes one group (`user:anne`, `viewer`, `document:roadmap`
 
 ## Errors
 
+These apply only when the option is on. With it off, nothing changes.
+
 | When | What happens |
 |---|---|
 | No model ID | Validation error, before anything is sent. |
-| A correlation ID you passed in is invalid (the server's rule is `^[\w\d-]{1,36}$`, ASCII only) | Validation error, before anything is sent. Without this, merging could replace an invalid ID that the server would have rejected. |
+| A correlation ID you passed in is invalid | Validation error, before anything is sent. The rule is `^[\w\d-]{1,36}$` (ASCII only), and it's part of the API contract in `openfga/api`. Without this check, merging could hide an invalid ID that the server would have rejected. |
 | Duplicate correlation IDs | Validation error, as today. |
-| Reading the model fails | The call fails. The SDK doesn't fall back to sending the checks unmerged. |
+| Reading the model fails (for example 401, 403, 404, 429, or a network error) | The SDK sends the checks unmerged, as it does today, so turning the option on can't break a call that works now. It logs one warning per model (not per call), records the fallback in [telemetry](#telemetry), and waits a short time (for example, a minute) before trying to read that model again. On a 404, the BatchCheck itself then gets the server's usual error. |
+| A check's object type, relation or user type isn't in the model | Sent as is. The server returns its usual error. |
 | A BatchCheck request fails | The call fails, as today. |
 | One check in a request returns an error | Only that check's group is affected. The error is copied to every check in the group. For example, if `can_share` was merged into `can_view` and `can_view` returns an error, `can_share` gets the same error. |
 
@@ -162,27 +185,31 @@ Reading the model on every call would add a ReadAuthorizationModel call to each 
 
 - In memory, per client instance, keyed by store ID and model ID.
 - A model never changes once it's written, so a cached model never goes stale.
-- Only successful reads are cached. Concurrent calls for the same model share one read.
+- Only successful reads are cached. Calls for the same model share one in-flight read, so 50 parallel BatchCheck calls make one ReadAuthorizationModel request.
+- A failed read is remembered for a short time, so missing read access doesn't add a read to every call.
 - It holds a small, bounded number of models and drops the least recently used.
 - To benefit, create the client once and reuse it, as the SDKs already recommend.
 
 ## Where the logic lives
 
-There are two functions in `openfga/language`, starting with Go:
+- **Resolve** lives in `openfga/language`, starting with Go. It takes the model and the checks, and returns the checks to send plus the groups.
+- **Expand** lives in each SDK. It takes the groups and the server's answers, and returns one answer per original check.
 
-- **Resolve:** takes the model and the checks, and returns the checks to send plus the groups.
-- **Expand:** takes the groups and the server's answers, and returns one answer per original check.
+Why split it this way:
 
-`language` already parses and validates models, so the rules are written and tested once instead of in every SDK. If the way models are read ever changes, it changes there first.
+| | Pros | Cons |
+|---|---|---|
+| **Resolve in `language`** | It reads the model, and `language` already parses and validates models. The rules and tests are written once, and if the way models are read changes, it changes there first. The server, CLI or other tools could reuse it later. | SDKs that can't call `language` (like Python today) have to port it. The shared tests keep ports in line. |
+| **Expand in each SDK** | It doesn't read the model. It only maps answers back by correlation ID, using each SDK's own response and error types, so there's nothing model-specific to share. | Each SDK writes it. It's short, and each SDK tests it against the [Expand rules](#expand-rules). |
 
-SDKs that can call `language` use it directly. The rest (like Python today) port the two functions. Either way, they must pass the shared tests.
+SDKs that can call `language` use Resolve directly. The rest port it. Either way, they must pass the shared tests.
 
 ## Shared tests
 
 - A new file in `openfga/language`, `tests/data/equivalent-checks-cases.yaml`, in the same style as the existing test-case files.
-- Each case has a model, the input checks, and the expected groups.
-- Cases must cover the tricky matches above: `1` vs `1.0`, `0` vs `-0.0`, `true` vs `1`, key order, list order, contextual tuple order, and nested values.
-- Each SDK copies the file from a pinned `language` commit and runs it in CI.
+- Each case has a model, the input checks, and the expected checks to send, each with its ID and the original checks it stands for.
+- Cases must cover the tricky matches above: `1` vs `1.0`, `0` vs `-0.0`, `true` vs `1`, missing and extra fields, no context vs `{}`, key order, list order, contextual tuple order and nested values. Also the same-object userset case, checks not in the model, and generated IDs that would match a caller's ID.
+- **How SDKs use it:** today, the Go, JS and Java code in `language` reads `tests/data/*.yaml` straight from the repo, and no SDK uses these files yet. For SDKs this is new: a small script copies the file from a pinned `language` commit into the SDK repo, and CI runs it. Bumping the pin is a manual PR for now. Automating it is a [later phase](#phases).
 
 A case could look like this (the final format will be settled during implementation):
 
@@ -200,34 +227,69 @@ A case could look like this (the final format will be settled during implementat
   checks:
     - { id: a, user: "user:anne", relation: can_view, object: "document:1" }
     - { id: b, user: "user:anne", relation: can_share, object: "document:1" }
-  expected_groups:
-    - { user: "user:anne", relation: viewer, object: "document:1", ids: [a, b] }
+    - { id: c, user: "user:bob", relation: can_share, object: "document:1" }
+  expected_sent:
+    - { id: merged-1, user: "user:anne", relation: viewer, object: "document:1", for: [a, b] }
+    - { id: c, user: "user:bob", relation: viewer, object: "document:1", for: [c] }
 ```
 
-## Observability
+## Telemetry
 
-- No new logs that include users, objects or context.
-- `checks_sent` in the response gives the total for the call.
-- The existing `fga-client.request.batch_check_size` telemetry attribute already reports how many checks each request sent.
-- Resolve always gives the same output for the same input, so any result can be reproduced from the model and the original checks.
+Metrics, recorded for each BatchCheck call with the option on. Names follow the existing `fga-client.*` metrics and will be settled during implementation.
+
+| Metric | Type | What it records |
+|---|---|---|
+| `fga-client.batch_check.checks_requested` | counter | Checks you passed in. |
+| `fga-client.batch_check.checks_sent` | counter | Checks actually sent. The gap between the two is what the option saved. |
+| `fga-client.model_cache.lookup` | counter | Model cache lookups, with a `hit` or `miss` attribute. |
+| `fga-client.batch_check.merge_fallback` | counter | Calls sent unmerged because the model couldn't be read, with the status code. |
+
+- Attributes are store ID and model ID, like the existing metrics. No users, objects or context.
+- The existing `fga-client.request.batch_check_size` attribute stays. It only reports how many checks each request sent, not how many you passed in.
+- On a fallback, the SDK logs one warning per model, with the store ID, model ID and status code.
+- Metrics add up across calls, so they can't show what one call sent. Whether the response also gets a per-call count is still open (see [Unresolved Questions](#unresolved-questions)).
+- Resolve is deterministic, so any result can be reproduced from the model and the original checks.
+
+# Phases
+[phases]: #phases
+
+**Phase 0 (this RFC):**
+
+- BatchCheck only, in the Python SDK, as a beta.
+- Aliases (including chains) and exact repeats.
+- Resolve in Go in `language`, with the shared tests.
+- The model cache and telemetry.
+
+**Later phases**, each with its own review. Resolve already returns groups keyed by a final relation, so none of these change the option or the shape of Resolve's output.
+
+- **Equivalent relations:** relations that aren't aliases but always get the same answer. For example:
+  - The same definition: `define can_edit: editor or owner or editor from parent` and `define can_share: editor or owner or editor from parent`.
+  - A union where every branch ends at one relation: with `define can_edit: editor`, `define can_view: can_edit or editor` is the same as `editor`.
+- **Answering from the model:** skip checks the model shows can never be true. For example, in Example 2, `team:eng#member` can never have `can_edit`, because `editor` only allows `user`. Also return errors from the SDK for checks not in the model.
+- **More methods:** ClientBatchCheck, ListRelations (which uses ClientBatchCheck), and ReadAuthorizationModel using the model cache.
+- **More SDKs:** JS and Java versions of Resolve in `language`, then the other SDKs, using [the same option](#the-option-in-each-sdk).
+- **Automation:** open a PR in each SDK when Resolve or the shared tests change in `language`.
 
 # Migration
 [migration]: #migration
 
-None. The option is off by default, and `checks_sent` is a new response field that doesn't change existing ones. The Python SDK ships the option marked **beta**, so its behavior may change based on feedback.
+None. The option is off by default. If a per-call count is added to the response, it's a new field that doesn't change existing ones. The Python SDK ships the option marked **beta**, so its behavior may change based on feedback.
 
 # Drawbacks
 [drawbacks]: #drawbacks
 
-- **One model read per model ID:** the first BatchCheck for each model in a client reads it. Short-lived clients don't benefit from the cache. For small batches with few aliases, the option may save little or nothing.
-- **Harder to debug:** the SDK changes what it sends. For a merged group, a server error names the final relation (`viewer`), not the one you asked for (`can_share`).
-- **Risk of drift:** a ported version could read the model differently from `language` or the server. This is reduced by keeping the rules in `language`, running the shared tests, and later opening a PR in each SDK automatically when the `language` functions change.
+- **One model read per model ID:** the first BatchCheck for each model in a client reads it. Short-lived clients don't benefit from the cache. For small batches with few aliases, the option may save little or nothing. If the credentials can't read the model, it saves nothing; the warning and the fallback metric make that visible.
+- **Harder to debug:** the SDK changes what it sends. Every check goes out with its final relation, so a server error names `viewer`, not the `can_share` you asked for.
+- **Risk of drift:** a ported Resolve could read the model differently from `language` or the server. This is reduced by keeping the rules in `language`, running the shared tests, and later opening a PR in each SDK automatically when `language` changes.
 
 # Alternatives
 [alternatives]: #alternatives
 
 - **Merge on the server:** this saves server work but doesn't reduce counted checks, because limits apply to the request before the server reads the model. It's still worth doing separately.
 - **Each SDK writes its own rules:** they would drift apart and could disagree with the server. Keeping the rules in `language` with shared tests avoids that.
+- **A separate wrapper method** (like `batch_check_merged`) instead of an option: every entry point (BatchCheck, ClientBatchCheck, ListRelations) would need its own parallel method, and apps would have to change their call sites. An option keeps one method per entry point and extends to the others in later phases.
+- **Fail when the model can't be read**, maybe with a setting to fall back: the option is a cost saving, so it shouldn't break a call that works today. Falling back with a warning and a metric keeps the call working, still tells the developer, and avoids another setting.
+- **Return errors from the SDK for checks not in the model:** this saves a check, but the SDK would own those errors and have to keep them in line with the server. It's listed as a later phase.
 - **A standalone code snippet for developers:** no one maintains it, and every app re-implements subtle rules.
 - **Do nothing:** apps keep choosing between fine-grained permissions and fewer counted checks.
 
@@ -242,14 +304,6 @@ None. The option is off by default, and `checks_sent` is a new response field th
 
 **To settle before merging:**
 
-1. **Names.** The option merges exact repeats too, so `optimize_relation_aliases` (from the issue) may not fit. Something like `merge_equivalent_checks`? Also the response field (`checks_sent`?). Each SDK would use its own casing.
+1. **Per-call count in the response.** Metrics add up across calls, so they can't show what one call sent, and some apps limit requests per client on their side. Keep `checks_sent` in the response as well as in telemetry, or telemetry only?
 2. **Function names and package** in `language`.
 3. **Beta release:** a pre-release version (e.g. `0.11.0b1`), or a normal release with the option marked beta?
-
-**Out of scope, possible follow-ups:**
-
-- Using the model cache in other SDK methods.
-- ClientBatchCheck and ListRelations.
-- Other SDKs, and JS and Java versions of the functions in `language`.
-- Opening a PR in each SDK automatically when the `language` functions change.
-- Merging overlapping relations, like `can_view: can_edit or viewer`.
