@@ -110,14 +110,14 @@ All checks are on `document:1`.
 
 The same option in every SDK, so later implementations match `language` and Python:
 
-| SDK | How you turn it on | Type and default | Per-call count in the response (if kept) |
-|---|---|---|---|
-| Python | `batch_check(body, {"merge_equivalent_checks": True})` | `bool`, `False` | `checks_sent` |
-| Go | `BatchCheckOptions{MergeEquivalentChecks: openfga.PtrBool(true)}` | `*bool`, `nil` means off | `ChecksSent` |
-| JS | `batchCheck(body, { mergeEquivalentChecks: true })` | `boolean`, `false` | `checksSent` |
-| Java | `new ClientBatchCheckOptions().mergeEquivalentChecks(true)` | `Boolean`, `false` | `getChecksSent()` |
+| SDK | How you turn it on | Type and default |
+|---|---|---|
+| Python | `batch_check(body, {"merge_equivalent_checks": True})` | `bool`, `False` |
+| Go | `BatchCheckOptions{MergeEquivalentChecks: openfga.PtrBool(true)}` | `*bool`, `nil` means off |
+| JS | `batchCheck(body, { mergeEquivalentChecks: true })` | `boolean`, `false` |
+| Java | `new ClientBatchCheckOptions().mergeEquivalentChecks(true)` | `Boolean`, `false` |
 
-Everything else is the same in every SDK: the merge rules, errors, telemetry names and shared tests. Other SDKs (like .NET) follow the same pattern.
+Everything else is the same in every SDK: the merge rules, errors, telemetry names and shared tests. The response doesn't change. Other SDKs (like .NET) follow the same pattern.
 
 # How it Works
 [how-it-works]: #how-it-works
@@ -147,7 +147,7 @@ In Example 1, resolve makes one group (`user:anne`, `viewer`, `document:roadmap`
    - Types matter: `true` and `1` don't match.
    - Key order in objects doesn't matter.
    - Order and repeats in lists do matter.
-   - Contextual tuples can be in any order (the server ignores their order too). Each one needs the exact same user, relation, object, condition name and condition context, or no condition on both. Repeats still count.
+   - Contextual tuples can be in any order, unless the same user, relation and object appear more than once in a list. Then the order must match too, because the server uses the first one. Each tuple needs the exact same user, relation, object, condition name and condition context, or no condition on both. Repeats still count.
    - These rules apply at every level of nested objects and lists.
 5. **Sent as is, with the caller's relation and correlation ID:**
    - **A userset on the same object, whose relation is anywhere in the chain** (including the one you asked for). With Example 1's model, take `document:roadmap#can_view` checking `can_share` on `document:roadmap`. The server's older check algorithm says a userset always has its own relation on its own object, and it applies this at every step of a chain. So `can_share → can_view` hits that rule and returns true, while the merged `viewer` check would be answered from tuples. The newer weighted-graph algorithm doesn't have this rule. This is the only special userset case: other usersets, like `team:eng#member`, merge like any user, and so do wildcard users (`user:*`).
@@ -171,7 +171,7 @@ These apply only when the option is on. With it off, nothing changes.
 
 | When | What happens |
 |---|---|
-| No model ID | Validation error, before anything is sent. |
+| No model ID | Validation error, before anything is sent. It never falls back: the mistake is in the caller's setup, so falling back would mean the option silently never works. |
 | A correlation ID you passed in is invalid | Validation error, before anything is sent. The rule is `^[\w\d-]{1,36}$` (ASCII only), and it's part of the API contract in `openfga/api`. Without this check, merging could hide an invalid ID that the server would have rejected. |
 | Duplicate correlation IDs | Validation error, as today. |
 | Reading the model fails (for example 401, 403, 404, 429, or a network error) | The SDK sends the checks unmerged, as it does today, so turning the option on can't break a call that works now. It logs one warning per model (not per call), records the fallback in [telemetry](#telemetry), and waits a short time (for example, a minute) before trying to read that model again. On a 404, the BatchCheck itself then gets the server's usual error. |
@@ -208,7 +208,7 @@ SDKs that can call `language` use Resolve directly. The rest port it. Either way
 
 - A new file in `openfga/language`, `tests/data/equivalent-checks-cases.yaml`, in the same style as the existing test-case files.
 - Each case has a model, the input checks, and the expected checks to send, each with its ID and the original checks it stands for.
-- Cases must cover the tricky matches above: `1` vs `1.0`, `0` vs `-0.0`, `true` vs `1`, missing and extra fields, no context vs `{}`, key order, list order, contextual tuple order and nested values. Also the same-object userset case, checks not in the model, and generated IDs that would match a caller's ID.
+- Cases must cover the tricky matches above: `1` vs `1.0`, `0` vs `-0.0`, `true` vs `1`, missing and extra fields, no context vs `{}`, key order, list order, contextual tuple order (including two tuples with the same user, relation and object but different conditions, in reversed order) and nested values. Also the same-object userset case, checks not in the model, and generated IDs that would match a caller's ID.
 - **How SDKs use it:** today, the Go, JS and Java code in `language` reads `tests/data/*.yaml` straight from the repo, and no SDK uses these files yet. For SDKs this is new: a small script copies the file from a pinned `language` commit into the SDK repo, and CI runs it. Bumping the pin is a manual PR for now. Automating it is a [later phase](#phases).
 
 A case could look like this (the final format will be settled during implementation):
@@ -247,7 +247,7 @@ Metrics, recorded for each BatchCheck call with the option on. Names follow the 
 - Attributes are store ID and model ID, like the existing metrics. No users, objects or context.
 - The existing `fga-client.request.batch_check_size` attribute stays. It only reports how many checks each request sent, not how many you passed in.
 - On a fallback, the SDK logs one warning per model, with the store ID, model ID and status code.
-- Metrics add up across calls, so they can't show what one call sent. Whether the response also gets a per-call count is still open (see [Unresolved Questions](#unresolved-questions)).
+- Metrics add up across calls, so they can't show what one call sent. Phase 0 proposes no per-call count in the response (see [Unresolved Questions](#unresolved-questions)).
 - Resolve is deterministic, so any result can be reproduced from the model and the original checks.
 
 # Phases
@@ -273,7 +273,7 @@ Metrics, recorded for each BatchCheck call with the option on. Names follow the 
 # Migration
 [migration]: #migration
 
-None. The option is off by default. If a per-call count is added to the response, it's a new field that doesn't change existing ones. The Python SDK ships the option marked **beta**, so its behavior may change based on feedback.
+None. The option is off by default, and the response doesn't change. The Python SDK ships the option marked **beta**, so its behavior may change based on feedback.
 
 # Drawbacks
 [drawbacks]: #drawbacks
@@ -304,6 +304,6 @@ None. The option is off by default. If a per-call count is added to the response
 
 **To settle before merging:**
 
-1. **Per-call count in the response.** Metrics add up across calls, so they can't show what one call sent, and some apps limit requests per client on their side. Keep `checks_sent` in the response as well as in telemetry, or telemetry only?
+1. **Per-call count in the response.** Metrics add up across calls, so they can't show what one call sent, and some apps limit requests per client on their side. But a response field doesn't fit every SDK yet: Python, JS and Java return their own response type, so a field is additive, while Go's `BatchCheckExecute` returns the generated `BatchCheckResponse`, so Go would need a new return type (breaking) or a change to the generated model. Proposal: telemetry only in phase 0, so all SDKs match and nothing breaks. Add a per-call count later, with Go's next major, if users need it. Is telemetry enough for phase 0?
 2. **Function names and package** in `language`.
 3. **Beta release:** a pre-release version (e.g. `0.11.0b1`), or a normal release with the option marked beta?
