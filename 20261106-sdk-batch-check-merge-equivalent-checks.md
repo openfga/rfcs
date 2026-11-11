@@ -45,7 +45,7 @@ The part that reads the model (Resolve) lives in `openfga/language` (Go first), 
 - A new BatchCheck option, `merge_equivalent_checks`, off by default. Each SDK uses its own casing (see [The option in each SDK](#the-option-in-each-sdk)).
 - It needs an authorization model ID, either set on the client or passed in the call. Without one, the SDK raises an error before sending anything. The SDK reads that model once and caches it.
 - You still get one result for each check you passed in, matched by your correlation IDs.
-- The SDK reports how many checks it actually sent (see [Telemetry](#telemetry)).
+- The SDK reports how many checks it actually sent, in [telemetry](#telemetry) and, in Python, in the response (see [Per-call count](#per-call-count)).
 - Nothing else about calling BatchCheck changes.
 
 ## Example 1: three checks become one
@@ -74,7 +74,7 @@ response = await fga_client.batch_check(
 )
 ```
 
-All three relations end at `viewer`. The SDK sends **1 check** (`user:anne`, `viewer`, `document:roadmap`) instead of 3. The response still has 3 results (`view`, `share` and `full-name`), each with the answer from that one check.
+All three relations end at `viewer`. The SDK sends **1 check** (`user:anne`, `viewer`, `document:roadmap`) instead of 3. The response still has 3 results (`view`, `share` and `full-name`), each with the answer from that one check, and `response.checks_sent` is `1`.
 
 ## Example 2: what merges and what doesn't
 
@@ -117,7 +117,7 @@ The same option in every SDK, so later implementations match `language` and Pyth
 | JS | `batchCheck(body, { mergeEquivalentChecks: true })` | `boolean`, `false` |
 | Java | `new ClientBatchCheckOptions().mergeEquivalentChecks(true)` | `Boolean`, `false` |
 
-Everything else is the same in every SDK: the merge rules, errors, telemetry names and shared tests. The response doesn't change. Other SDKs (like .NET) follow the same pattern.
+Everything else is the same in every SDK: the merge rules, errors, telemetry names and shared tests. For now, only Python adds a [per-call count](#per-call-count) to the response. Other SDKs (like .NET) follow the same pattern.
 
 # How it Works
 [how-it-works]: #how-it-works
@@ -248,8 +248,14 @@ Metrics, recorded for each BatchCheck call with the option on. Names follow the 
 - Attributes are store ID and model ID, like the existing metrics. No users, objects or context.
 - The existing `fga-client.request.batch_check_size` attribute stays. It only reports how many checks each request sent, not how many you passed in.
 - On a fallback, the SDK logs one warning per model, with the store ID, model ID and status code.
-- Metrics add up across calls, so they can't show what one call sent. Phase 0 proposes no per-call count in the response (see [Unresolved Questions](#unresolved-questions)).
+- Metrics add up across calls, so they can't show what one call sent. Python's response shows that (see [Per-call count](#per-call-count)).
 - Resolve is deterministic, so any result can be reproduced from the model and the original checks.
+
+## Per-call count
+
+- Python's `ClientBatchCheckResponse` gets an optional `checks_sent`: how many checks this call actually sent. It's set only when the option is on (including when the SDK falls back to sending unmerged), so nothing changes with it off.
+- It's for apps that limit requests per client on their side, which metrics can't show, since they add up across calls.
+- Other SDKs decide when they add the option. JS and Java return their own response type, so a field is additive. Go's `BatchCheckExecute` returns the generated `BatchCheckResponse`, so Go would need a new return type or a change to the generated model.
 
 # Phases
 [phases]: #phases
@@ -259,7 +265,7 @@ Metrics, recorded for each BatchCheck call with the option on. Names follow the 
 - BatchCheck only, in the Python SDK, as a beta.
 - Aliases (including chains) and exact repeats.
 - Resolve in Go in `language`, with the shared tests.
-- The model cache and telemetry.
+- The model cache, telemetry and Python's per-call count.
 
 **Later phases**, each with its own review. Resolve already returns groups keyed by a final relation, so none of these change the option or the shape of Resolve's output.
 
@@ -268,13 +274,13 @@ Metrics, recorded for each BatchCheck call with the option on. Names follow the 
   - A union where every branch ends at one relation: with `define can_edit: editor`, `define can_view: can_edit or editor` is the same as `editor`.
 - **Answering from the model:** skip checks the model shows can never be true. For example, in Example 2, `team:eng#member` can never have `can_edit`, because `editor` only allows `user`. Also return errors from the SDK for checks not in the model.
 - **More methods:** ClientBatchCheck, ListRelations (which uses ClientBatchCheck), and ReadAuthorizationModel using the model cache.
-- **More SDKs:** JS and Java versions of Resolve in `language`, then the other SDKs, using [the same option](#the-option-in-each-sdk).
+- **More SDKs:** JS and Java versions of Resolve in `language`, then the other SDKs, using [the same option](#the-option-in-each-sdk). Each one decides whether to add the [per-call count](#per-call-count).
 - **Automation:** open a PR in each SDK when Resolve or the shared tests change in `language`.
 
 # Migration
 [migration]: #migration
 
-None. The option is off by default, and the response doesn't change. The Python SDK ships the option marked **beta**, so its behavior may change based on feedback.
+None. The option is off by default. Python's response gains one optional field, set only when the option is on. The Python SDK ships the option marked **beta**, so its behavior may change based on feedback.
 
 # Drawbacks
 [drawbacks]: #drawbacks
@@ -305,6 +311,5 @@ None. The option is off by default, and the response doesn't change. The Python 
 
 **To settle before merging:**
 
-1. **Per-call count in the response.** Metrics add up across calls, so they can't show what one call sent, and some apps limit requests per client on their side. But a response field doesn't fit every SDK yet: Python, JS and Java return their own response type, so a field is additive, while Go's `BatchCheckExecute` returns the generated `BatchCheckResponse`, so Go would need a new return type (breaking) or a change to the generated model. Proposal: telemetry only in phase 0, so all SDKs match and nothing breaks. Add a per-call count later, with Go's next major, if users need it. Is telemetry enough for phase 0?
-2. **Function names and package** in `language`.
-3. **Beta release:** a pre-release version (e.g. `0.11.0b1`), or a normal release with the option marked beta?
+1. **Function names and package** in `language`.
+2. **Beta release:** a pre-release version (e.g. `0.11.0b1`), or a normal release with the option marked beta?
