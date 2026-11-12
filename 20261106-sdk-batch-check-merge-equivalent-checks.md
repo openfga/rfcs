@@ -3,7 +3,7 @@
 - **Name:** Merge equivalent checks in SDK BatchCheck
 - **Start Date:** 2026-11-06
 - **Author(s):** [@Siddhant-K-code](https://github.com/Siddhant-K-code)
-- **Status:** Draft
+- **Status:** Approved
 - **RFC Pull Request:**
 - **Relevant Issues:**
   - https://github.com/openfga/python-sdk/issues/325
