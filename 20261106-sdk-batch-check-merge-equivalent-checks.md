@@ -4,7 +4,7 @@
 - **Start Date:** 2026-11-06
 - **Author(s):** [@Siddhant-K-code](https://github.com/Siddhant-K-code)
 - **Status:** Approved
-- **RFC Pull Request:**
+- **RFC Pull Request:** https://github.com/openfga/rfcs/pull/40
 - **Relevant Issues:**
   - https://github.com/openfga/python-sdk/issues/325
 - **Supersedes:** N/A
