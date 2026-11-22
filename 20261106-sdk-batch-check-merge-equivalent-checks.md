@@ -116,8 +116,9 @@ The same option in every SDK, so later implementations match `language` and Pyth
 | Go | `BatchCheckOptions{MergeEquivalentChecks: openfga.PtrBool(true)}` | `*bool`, `nil` means off |
 | JS | `batchCheck(body, { mergeEquivalentChecks: true })` | `boolean`, `false` |
 | Java | `new ClientBatchCheckOptions().mergeEquivalentChecks(true)` | `Boolean`, `false` |
+| .NET | `new ClientBatchCheckOptions { MergeEquivalentChecks = true }` | `bool?`, `null` means off |
 
-Everything else is the same in every SDK: the merge rules, errors, telemetry names and shared tests. For now, only Python adds a [per-call count](#per-call-count) to the response. Other SDKs (like .NET) follow the same pattern.
+Everything else is the same in every SDK: the merge rules, errors, telemetry names and shared tests. For now, only Python adds a [per-call count](#per-call-count) to the response.
 
 # How it Works
 [how-it-works]: #how-it-works
@@ -208,8 +209,8 @@ SDKs that can call `language` use Resolve directly. The rest port it. Either way
 ## Shared tests
 
 - A new file in `openfga/language`, `tests/data/equivalent-checks-cases.yaml`, in the same style as the existing test-case files. A generated copy, `equivalent-checks-cases.json`, has every model as JSON for SDKs without a DSL parser, and a Go test keeps the two in sync.
-- Each case has a model, the input checks, and the expected checks to send, each with its ID and the original checks it stands for.
-- Cases must cover the tricky matches above: `1` vs `1.0`, integers that are the same double, `0` vs `-0.0`, `true` vs `1`, missing and extra fields, no context vs `{}`, no contextual tuples vs `[]`, key order, list order, contextual tuple order, repeated contextual tuples and nested values. Also the same-object userset case, checks not in the model, and generated IDs that would match a caller's ID.
+- Each case has a model, the input checks, and the expected checks to send. Each expected check has its ID, the original checks it stands for, and the context and contextual tuples of the first of those checks, exactly as written.
+- Cases must cover the tricky matches above: `1` vs `1.0`, integers that are the same double, `0` vs `-0.0`, `true` vs `1`, missing and extra fields, no context vs `{}`, no contextual tuples vs `[]`, key order, list order, contextual tuple order, repeated contextual tuples (with no condition, the same condition or different ones) and nested values (in context and in contextual tuple conditions). Also the same-object userset case, checks not in the model, and generated IDs that would match a caller's ID.
 - **How SDKs use it:** today, the Go, JS and Java code in `language` reads `tests/data/*.yaml` straight from the repo, and no SDK uses these files yet. For SDKs this is new: a small script copies the cases from a pinned `language` commit into the SDK repo, and CI runs them. Bumping the pin is a manual PR for now. Automating it is a [later phase](#phases).
 
 A case looks like this (all cases are in [openfga/language#718](https://github.com/openfga/language/pull/718)):
@@ -274,7 +275,7 @@ Metrics, recorded for each BatchCheck call with the option on. Names follow the 
   - A union where every branch ends at one relation: with `define can_edit: editor`, `define can_view: can_edit or editor` is the same as `editor`.
 - **Answering from the model:** skip checks the model shows can never be true. For example, in Example 2, `team:eng#member` can never have `can_edit`, because `editor` only allows `user`. Also return errors from the SDK for checks not in the model.
 - **More methods:** ClientBatchCheck, ListRelations (which uses ClientBatchCheck), and ReadAuthorizationModel using the model cache.
-- **More SDKs:** JS and Java versions of Resolve in `language`, then the other SDKs, using [the same option](#the-option-in-each-sdk). Each one decides whether to add the [per-call count](#per-call-count).
+- **More SDKs:** JS and Java versions of Resolve in `language`, then the other SDKs, using [the same option](#the-option-in-each-sdk). For .NET, Resolve goes in `language` once it supports C#, or is ported into the .NET SDK like Python. Either way, it passes the shared tests. Each SDK decides whether to add the [per-call count](#per-call-count).
 - **Automation:** open a PR in each SDK when Resolve or the shared tests change in `language`.
 
 # Migration
@@ -309,7 +310,7 @@ None. The option is off by default. Python's response gains one optional field, 
 # Unresolved Questions
 [unresolved-questions]: #unresolved-questions
 
-**To settle before merging:**
+**Settled during review:**
 
-1. **Function names and package** in `language`.
-2. **Beta release:** a pre-release version (e.g. `0.11.0b1`), or a normal release with the option marked beta?
+1. **Function names and package** in `language`: decided in the Go implementation, [openfga/language#721](https://github.com/openfga/language/issues/721), with the `language` maintainers. They're internal. Users only see the option, telemetry names and behavior, which this RFC fixes.
+2. **Beta release:** a normal release, with the option marked beta in the README and release notes. The Python SDK has never shipped pre-release versions, and the option is off by default, so nothing changes for anyone who doesn't turn it on.
