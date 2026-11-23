@@ -120,6 +120,8 @@ The same option in every SDK, so later implementations match `language` and Pyth
 
 Everything else is the same in every SDK: the merge rules, errors, telemetry names and shared tests. For now, only Python adds a [per-call count](#per-call-count) to the response.
 
+SDKs with both a sync and an async client (like Python) add the option to both, with the same rules. In the sync client, threads share one model read per model, and no lock is held while reading.
+
 # How it Works
 [how-it-works]: #how-it-works
 
@@ -129,7 +131,7 @@ When the option is on, the SDK:
 
 1. Fixes the store ID and model ID for the whole call. Reading the model and sending the checks must use the same model, or merges could be wrong.
 2. Validates every correlation ID you passed in (see [Errors](#errors)), so merging can't hide an invalid one.
-3. Gets the model from the [model cache](#model-cache). Only the first call for a model reads it from the server, and calls running in parallel share that one read. If the model can't be read, the SDK skips steps 4 and 6 and sends the checks unmerged, as it does today (see [Errors](#errors)).
+3. Gets the model from the [model cache](#model-cache). Only the first call for a model reads it from the server, and calls running in parallel share that one read. If the model or store doesn't exist, the call fails before anything is sent. If the model can't be read for another reason, the SDK skips steps 4 and 6 and sends the checks unmerged, as it does today (see [Errors](#errors)).
 4. **Resolve:** groups the checks and builds the list to send.
 5. Sends that list in batches, as it does today. Grouping covers all checks in the call before they're split into batches, so checks that would land in different batches can still merge.
 6. **Expand:** copies each answer back to every check in its group.
@@ -176,7 +178,8 @@ These apply only when the option is on. With it off, nothing changes.
 | No model ID | Validation error, before anything is sent. It never falls back: the mistake is in the caller's setup, so falling back would mean the option silently never works. |
 | A correlation ID you passed in is invalid | Validation error, before anything is sent. The rule is `^[\w\d-]{1,36}$` (ASCII only), and it's part of the API contract in `openfga/api`. Without this check, merging could hide an invalid ID that the server would have rejected. |
 | Duplicate correlation IDs | Validation error, as today. |
-| Reading the model fails (for example 401, 403, 404, 429, or a network error) | The SDK sends the checks unmerged, as it does today, so turning the option on can't break a call that works now. It logs one warning per model (not per call), records the fallback in [telemetry](#telemetry), and waits a short time (for example, a minute) before trying to read that model again. On a 404, the BatchCheck itself then gets the server's usual error. |
+| The model or store doesn't exist (`authorization_model_not_found` or `store_id_not_found`) | The call fails with that error before any check is sent. BatchCheck would fail the same way. Not remembered, so the next call reads again. |
+| Reading the model fails for another reason (for example 401, 403, 429, a 5xx, a timeout or a network error) | The SDK sends the checks unmerged, as it does today, so turning the option on can't break a call that works now. It logs a warning and records the fallback in [telemetry](#telemetry). A 403 or 429 is remembered for a short time (for example, a minute), so the SDK doesn't retry the read on every call. Other failures aren't remembered, so the next call reads again. |
 | A check's object type, relation, user type or userset relation isn't in the model | Sent as is. The server returns its usual error. |
 | A BatchCheck request fails | The call fails, as today. |
 | One check in a request returns an error | Only that check's group is affected. The error is copied to every check in the group. For example, if `can_share` was merged into `can_view` and `can_view` returns an error, `can_share` gets the same error. |
@@ -187,8 +190,9 @@ Reading the model on every call would add a ReadAuthorizationModel call to each 
 
 - In memory, per client instance, keyed by store ID and model ID.
 - A model never changes once it's written, so a cached model never goes stale.
-- Only successful reads are cached. Calls for the same model share one in-flight read, so 50 parallel BatchCheck calls make one ReadAuthorizationModel request.
-- A failed read is remembered for a short time, so missing read access doesn't add a read to every call.
+- Only successful reads are cached. Calls for the same model share one in-flight read, so 50 parallel BatchCheck calls make one ReadAuthorizationModel request. Every waiting call gets that read's result, including a failure.
+- Waiting for the model counts toward the call's own timeout where the SDK has one (for example, a Go context deadline). A call that times out or is cancelled stops waiting; the read continues for the other calls.
+- A 403 or 429 is remembered for a short time, so missing read access or rate limiting doesn't add a read to every call. Other failures aren't remembered (see [Errors](#errors)).
 - It holds a small, bounded number of models and drops the least recently used.
 - To benefit, create the client once and reuse it, as the SDKs already recommend.
 
@@ -248,7 +252,7 @@ Metrics, recorded for each BatchCheck call with the option on. Names follow the 
 
 - Attributes are store ID and model ID, like the existing metrics. No users, objects or context.
 - The existing `fga-client.request.batch_check_size` attribute stays. It only reports how many checks each request sent, not how many you passed in.
-- On a fallback, the SDK logs one warning per model, with the store ID, model ID and status code.
+- On a fallback, the SDK logs a warning for each failed read, with the store ID, model ID and status code.
 - Metrics add up across calls, so they can't show what one call sent. Python's response shows that (see [Per-call count](#per-call-count)).
 - Resolve is deterministic, so any result can be reproduced from the model and the original checks.
 
@@ -296,7 +300,7 @@ None. The option is off by default. Python's response gains one optional field, 
 - **Merge on the server:** this saves server work but doesn't reduce counted checks, because limits apply to the request before the server reads the model. It's still worth doing separately.
 - **Each SDK writes its own rules:** they would drift apart and could disagree with the server. Keeping the rules in `language` with shared tests avoids that.
 - **A separate wrapper method** (like `batch_check_merged`) instead of an option: every entry point (BatchCheck, ClientBatchCheck, ListRelations) would need its own parallel method, and apps would have to change their call sites. An option keeps one method per entry point and extends to the others in later phases.
-- **Fail when the model can't be read**, maybe with a setting to fall back: the option is a cost saving, so it shouldn't break a call that works today. Falling back with a warning and a metric keeps the call working, still tells the developer, and avoids another setting.
+- **Fail whenever the model can't be read**, maybe with a setting to fall back: the option is a cost saving, so it shouldn't break a call that works today. Only a missing model or store fails, since BatchCheck would fail anyway. Falling back with a warning and a metric keeps the call working, still tells the developer, and avoids another setting.
 - **Return errors from the SDK for checks not in the model:** this saves a check, but the SDK would own those errors and have to keep them in line with the server. It's listed as a later phase.
 - **A standalone code snippet for developers:** no one maintains it, and every app re-implements subtle rules.
 - **Do nothing:** apps keep choosing between fine-grained permissions and fewer counted checks.
