@@ -17,7 +17,7 @@ A new opt-in BatchCheck option, `merge_equivalent_checks`, for the OpenFGA SDKs.
 - **Aliases:** relations defined as just another relation, like `define can_share: can_view`.
 - **Exact repeats:** the same check passed more than once.
 
-The part that reads the model (Resolve) lives in `openfga/language` (Go first), with shared test cases that every SDK must pass. The SDK caches the model, so it's read once per model ID, and reports how many checks it actually sent. The Python SDK ships it first, as a beta. Later phases are listed in [Phases](#phases).
+The part that reads the model (Resolve) lives in `openfga/language` (Go first), with shared test cases that every SDK must pass. The SDK caches the model, so it's read once per model ID, and reports how many checks it actually sent. The Python SDK ships it first. Later phases are listed in [Phases](#phases).
 
 # Definitions
 [definitions]: #definitions
@@ -268,7 +268,7 @@ Metrics, recorded for each BatchCheck call with the option on. Names follow the 
 
 **Phase 0 (this RFC):**
 
-- BatchCheck only, in the Python SDK, as a beta.
+- BatchCheck only, in the Python SDK.
 - Aliases (including chains) and exact repeats.
 - Resolve in Go in `language`, with the shared tests.
 - The model cache, telemetry and Python's per-call count.
@@ -286,7 +286,7 @@ Metrics, recorded for each BatchCheck call with the option on. Names follow the 
 # Migration
 [migration]: #migration
 
-None. The option is off by default. Python's response gains one optional field, set only when the option is on. The Python SDK ships the option marked **beta**, so its behavior may change based on feedback.
+None. The option is off by default, so it works as a feature flag: nothing changes until an app turns it on. Python's response gains one optional field, set only when the option is on.
 
 # Drawbacks
 [drawbacks]: #drawbacks
@@ -320,5 +320,5 @@ None. The option is off by default. Python's response gains one optional field, 
 **Settled during review:**
 
 1. **Function names and package** in `language`: decided in the Go implementation, [openfga/language#721](https://github.com/openfga/language/issues/721), with the `language` maintainers. They're internal. Users only see the option, telemetry names and behavior, which this RFC fixes.
-2. **Beta release:** a normal release, with the option marked beta in the README and release notes. The Python SDK has never shipped pre-release versions, and the option is off by default, so nothing changes for anyone who doesn't turn it on.
+2. **Release:** a normal release through the usual process. No pre-release, and the option isn't labeled beta. It's off by default, so it works as the feature flag: nothing changes for anyone who doesn't turn it on.
 3. **A 401 or 403 when reading the model:** the call fails instead of falling back, so wrong credentials don't go unnoticed (see [Errors](#errors)). Other read failures, like a 429 or a 5xx, still fall back.
