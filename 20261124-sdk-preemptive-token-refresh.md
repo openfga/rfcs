@@ -4,7 +4,7 @@
 - Start Date: 2026-11-24
 - Author(s): [@cluelessno1](https://github.com/cluelessno1)
 - Status: Draft <!-- Acceptable values: Draft, Approved, On Hold, Superseded -->
-- RFC Pull Request: (leave blank)
+- RFC Pull Request: https://github.com/openfga/rfcs/pull/42
 - Relevant Issues:
 - Supersedes: N/A
 
