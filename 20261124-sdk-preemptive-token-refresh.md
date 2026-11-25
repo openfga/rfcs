@@ -371,7 +371,7 @@ Three choices need a reason:
 - Java adds no executor. An executor's threads have to be shut down, or they keep the JVM from exiting, and `OpenFgaClient` has no `close()` method (it is not `AutoCloseable`) in which to do that.
 - The JS token code calls the SDK's own request helper and not the HTTP library, so it does not change if the SDK changes its HTTP library.
 
-Python's async client cancels a running refresh in `close()` before it closes the HTTP session. Python's sync client and the .NET client also have a close or dispose method, and those do not change: a refresh in flight completes or fails by itself, and a failure stays inside the SDK. The Go, Java and JS clients have no such method and still need none.
+Only Python's async client changes its `close()`. There the refresh is an `asyncio` task, and it does not end when the HTTP session closes. It keeps retrying on the closed session, and it can still be pending when the event loop ends, which Python reports as a warning. So `close()` cancels the task and waits for it before it closes the session. Python's sync client and the .NET client also have a close or dispose method, and those do not change. A refresh in flight completes or fails by itself, and a failure stays inside the SDK. The Go, Java and JS clients have no such method and still need none.
 
 ## Handling a 401
 
