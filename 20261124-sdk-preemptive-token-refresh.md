@@ -350,7 +350,7 @@ All six runtimes (Python has a sync and an async client) follow the same five ru
 2. A client runs one token exchange at a time. However many calls arrive at once, the client sends one token request. Calls in Case 2 return at once with the cached token. Calls in Case 3 wait on the same exchange. Before it starts an exchange, the client checks the token again under the lock, so a call that read an old token just before an exchange finished does not start another.
 3. Every token request has a timeout. Each attempt uses the SDK's configured timeout, or 10 seconds if none is set. The record of the running exchange is always cleared when it ends, so a token endpoint that never answers cannot block later exchanges. An exchange is recorded before it can end, so the record is never left pointing at a finished exchange.
 4. One caller giving up does not stop the exchange. If several calls are waiting for a token exchange and one of them is cancelled or times out, only that call stops waiting. The exchange continues and the other calls get its result.
-5. Background errors stay inside the SDK. They do not surface as unhandled promise rejections or unobserved task exceptions, and the process can exit without the client being closed.
+5. Background errors stay inside the SDK. They do not surface as unhandled promise rejections or unobserved task exceptions. A background refresh also leaves no timer or non-daemon thread behind, so the application can shut down without closing the client.
 
 ## In each runtime
 
