@@ -70,7 +70,7 @@ The client-credentials configuration gets three optional settings. Existing appl
 Application developers who use client credentials are the ones affected. The API token method and the no-credentials method have no token to refresh, so nothing changes for them.
 
 - Application code does not have to change. The defaults apply when the SDK is upgraded.
-- Three optional settings sit next to the client ID and secret. The SDK validates them when it creates the client.
+- All three optional settings live on each SDK's ClientCredentials configuration object, next to the client ID and secret. The SDK validates them when it creates the client.
 - They cannot be set per request or at the top level of the client configuration. [Alternatives](#alternatives) explains why.
 
 ## The settings
@@ -81,7 +81,7 @@ Application developers who use client credentials are the ones affected. The API
 | `tokenRefreshJitterRatio` | The upper bound of a random fraction added to the ratio, so that clients started together do not all refresh together. `0` turns jitter off | `0.1` | `0` to `0.4` |
 | `tokenRefreshCutoffInSec` | The SDK does not start a background refresh during the last this-many seconds of a token's life. `0` turns the cutoff off | `60` | `0` or more |
 
-The ratio plus the sampled jitter is capped at `0.9`. That is why the jitter stops at `0.4`: the lowest ratio is `0.5`, so a larger jitter could never take full effect. With a ratio of `0.9`, jitter has no effect at all.
+The ratio plus the sampled jitter is capped at `0.9`. That is why the jitter stops at `0.4`. The lowest ratio is `0.5`, so a larger jitter could never take full effect. With a ratio of `0.9`, jitter has no effect at all.
 
 ## The settings in each SDK
 
@@ -131,7 +131,7 @@ This example uses a ratio of `0.8` and a jitter of `0` to keep the times round, 
 | 12:54:00 | The endpoint is still down. The next call again uses token A and succeeds. The refresh fails. 6 minutes remain, so the next attempt is at 12:57:00. |
 | 12:57:00 | The endpoint is back. The next call uses token A, and the background refresh stores token B (`expiresAt` 13:57:00, `refreshAt` 13:45:00). |
 
-No API call failed or waited. Today, JS, Python, Java and .NET would have started failing calls between 12:50 and 12:55, when the token entered their buffer, and kept failing them until 12:57. Go would not have failed here, because its 10-second buffer starts at 12:59:50, after the endpoint was back.
+No API call failed or waited. Today, JS, Python, Java and .NET start replacing a token 5 to 10 minutes before it expires, because a random jitter of up to 5 minutes is added to a 5-minute buffer. Their calls would have started failing at some point between 12:50 (longest jitter) and 12:55 (no jitter) and kept failing until 12:57, which is 2 to 7 minutes of failed calls. Go would not have failed here, because its 10-second buffer starts at 12:59:50, after the endpoint was back.
 
 ## Example 2: a 5-minute token with the defaults
 
