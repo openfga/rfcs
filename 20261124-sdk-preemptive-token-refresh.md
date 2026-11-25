@@ -28,7 +28,7 @@ The client-credentials configuration gets three optional settings. Existing appl
 - Client credentials: the OAuth 2.0 grant ([RFC 6749, section 4.4](https://datatracker.ietf.org/doc/html/rfc6749#section-4.4)) the SDKs use when they are configured with a client ID and secret. The SDK exchanges them for an access token at the token endpoint of the configured token issuer.
 - Token exchange: one call to the token endpoint that returns a new access token, including the SDK's existing retries for that call.
 - API call: one request from the SDK to the OpenFGA server, for example Check or Write, including the SDK's retries of that request.
-- Lifetime: the expires_in value in a token exchange response, in seconds.
+- Lifetime: the `expires_in` value in a token exchange response, in seconds.
 - Expiry (`expiresAt`): the time at which the SDK stops using a token. It is the time the token was received plus its lifetime.
 - Refresh point (`refreshAt`): the time from which the SDK tries to replace a token that is still valid.
 - Background refresh: a token exchange that no API call waits for.
@@ -70,7 +70,7 @@ The client-credentials configuration gets three optional settings. Existing appl
 Application developers who use client credentials are the ones affected. The API token method and the no-credentials method have no token to refresh, so nothing changes for them.
 
 - Application code does not have to change. The defaults apply when the SDK is upgraded.
-- The three optional settings sit on each SDK's client-credentials configuration object, next to the client ID and secret.
+- The three optional settings sit on each SDK's client-credentials configuration object, next to the client ID and secret. The SDK validates them when it creates the client.
 - They cannot be set per request or at the top level of the client configuration. [Alternatives](#alternatives) explains why.
 
 ## The settings
@@ -169,7 +169,7 @@ When a token exchange returns a token with lifetime `T`:
 - `refreshAt = now + T * effectiveRatio`, where `effectiveRatio = min(tokenRefreshRatio + random(0, tokenRefreshJitterRatio), 0.9)` is sampled once per token.
 - The lifetime comes only from `expires_in` in the token exchange response. Access tokens are opaque to the SDK and are never decoded.
 - `now` is the time the response arrives, so the SDK's expiry is later than the issuer's by the time the response took to arrive. The [`401` handling](#handling-a-401) covers a token that expires on the server first.
-- No SDK uses local time for this, so a time zone or daylight-saving change does not move the refresh point. Go and Python use a monotonic clock, which only counts elapsed time and is not affected when the machine's clock is corrected. JS, Java and .NET use UTC.
+- All five SDKs read the time in UTC, never in local time, so a time zone or daylight-saving change does not move the refresh point. If the machine's clock is set back, the SDK can treat an expired token as valid. The [`401` handling](#handling-a-401) covers that.
 
 ## On each API call
 
