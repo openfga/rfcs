@@ -11,7 +11,7 @@
 # Summary
 [summary]: #summary
 
-The OpenFGA SDKs that authenticate with OAuth 2.0 client credentials replace their access token inside whichever API call finds it close to expiry. If the token endpoint is unavailable at that moment the call fails, although the SDK still holds a valid token.
+The OpenFGA SDKs that authenticate with OAuth 2.0 client credentials replace their access token inside all the API calls that are inside the fixed value token refresh buffer, before the token expiry. If the token endpoint is unavailable at that moment, the call fails, although the SDK still holds a valid token.
 
 The JS, Go, Python, Java and .NET SDKs would all change in the same way:
 
