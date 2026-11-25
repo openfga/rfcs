@@ -27,7 +27,8 @@ The client-credentials configuration gets three optional settings. Existing appl
 
 - Client credentials: the OAuth 2.0 grant ([RFC 6749, section 4.4](https://datatracker.ietf.org/doc/html/rfc6749#section-4.4)) the SDKs use when they are configured with a client ID and secret. The SDK exchanges them for an access token at the token endpoint of the configured token issuer.
 - Token exchange: one call to the token endpoint that returns a new access token, including the SDK's existing retries for that call.
-- Lifetime: the `expires_in` value returned with a token, in seconds.
+- API call: one request from the SDK to the OpenFGA server, for example Check or Write, including the SDK's retries of that request.
+- Lifetime: the `expires_in` value returned with a new token request, in seconds.
 - Expiry (`expiresAt`): the time at which the SDK stops using a token. It is the time the token was received plus its lifetime.
 - Refresh point (`refreshAt`): the time from which the SDK tries to replace a token that is still valid.
 - Background refresh: a token exchange that no API call waits for.
@@ -35,8 +36,7 @@ The client-credentials configuration gets three optional settings. Existing appl
   - Case 1 (fresh): the SDK holds a token and its refresh point has not been reached (`now < refreshAt`).
   - Case 2 (refresh due): the refresh point has been reached and the token has not expired (`refreshAt <= now < expiresAt`).
   - Case 3 (no usable token): the SDK holds no token, or its token has expired (`now >= expiresAt`). This is the case on the first call and after a token is discarded.
-- Runway: the time left on the current token when the SDK first tries to replace it. A token endpoint outage shorter than the runway does not affect API calls.
-- Target personas: application developers who use an OpenFGA SDK with client credentials, and SDK maintainers.
+- Runway: the time left on the current token when the SDK first tries to replace it. A token endpoint outage that starts and ends within the runway causes no failed API call. If the token is still not replaced when it expires, the next call waits for a new one.
 
 # Motivation
 [motivation]: #motivation
