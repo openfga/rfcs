@@ -11,7 +11,7 @@
 # Summary
 [summary]: #summary
 
-The OpenFGA SDKs that authenticate with OAuth 2.0 client credentials replace their access token inside all the API calls that are inside the fixed value token refresh buffer, before the token expiry. If the token endpoint is unavailable at that moment, the call fails, although the SDK still holds a valid token.
+The OpenFGA SDKs that authenticate with OAuth 2.0 client credentials replace their access token inside an API call, once the token is within a fixed buffer before its expiry. If the token endpoint is unavailable at that moment, the call fails, although the SDK still holds a valid token.
 
 The JS, Go, Python, Java and .NET SDKs would all change in the same way:
 
@@ -28,7 +28,7 @@ The client-credentials configuration gets three optional settings. Existing appl
 - Client credentials: the OAuth 2.0 grant ([RFC 6749, section 4.4](https://datatracker.ietf.org/doc/html/rfc6749#section-4.4)) the SDKs use when they are configured with a client ID and secret. The SDK exchanges them for an access token at the token endpoint of the configured token issuer.
 - Token exchange: one call to the token endpoint that returns a new access token, including the SDK's existing retries for that call.
 - API call: one request from the SDK to the OpenFGA server, for example Check or Write, including the SDK's retries of that request.
-- Lifetime: the `expires_in` value returned with a new token exchange response, in seconds.
+- Lifetime: the expires_in value in a token exchange response, in seconds.
 - Expiry (`expiresAt`): the time at which the SDK stops using a token. It is the time the token was received plus its lifetime.
 - Refresh point (`refreshAt`): the time from which the SDK tries to replace a token that is still valid.
 - Background refresh: a token exchange that no API call waits for.
@@ -59,7 +59,7 @@ The client-credentials configuration gets three optional settings. Existing appl
 
 ## Expected outcome
 
-- A token endpoint outage shorter than the runway causes no failed API call.
+- A token endpoint outage that starts and ends within the runway causes no failed API call.
 - With the defaults, a token is used for at least 80% of its lifetime before it is replaced. So when refreshes succeed, the SDK makes at most 1.25 token requests per lifetime (`1 / 0.8`), for example 5 requests in 4 days for a 24-hour token.
 - A `401` caused by a rejected token is retried once with a new token.
 - All five SDKs behave the same way and offer the same settings.
@@ -70,7 +70,7 @@ The client-credentials configuration gets three optional settings. Existing appl
 Application developers who use client credentials are the ones affected. The API token method and the no-credentials method have no token to refresh, so nothing changes for them.
 
 - Application code does not have to change. The defaults apply when the SDK is upgraded.
-- All three optional settings live on each SDK's ClientCredentials configuration object, next to the client ID and secret. The SDK validates them when it creates the client.
+- The three optional settings sit on each SDK's client-credentials configuration object, next to the client ID and secret.
 - They cannot be set per request or at the top level of the client configuration. [Alternatives](#alternatives) explains why.
 
 ## The settings
