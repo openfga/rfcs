@@ -31,7 +31,7 @@ The client-credentials configuration gets three optional settings. Existing appl
 - Lifetime: the `expires_in` value in a token exchange response, in seconds.
 - Expiry (`expiresAt`): the time at which the SDK stops using a token. It is the time the token was received plus its lifetime.
 - Refresh point (`refreshAt`): the time from which the SDK tries to replace a token that is still valid.
-- Background refresh: a token exchange that no API call waits for.
+- Background refresh: a token exchange started by an API call that does not wait for it (Case 2).
 - Case 1, Case 2 and Case 3: the three states an API call can find the token in.
   - Case 1 (fresh): the SDK holds a token and its refresh point has not been reached (`now < refreshAt`).
   - Case 2 (refresh due): the refresh point has been reached and the token has not expired (`refreshAt <= now < expiresAt`).
@@ -226,42 +226,68 @@ The behaviour described as one language-neutral block. [In each runtime](#in-eac
 
 ```
 // Client credentials only. Kept per client:
-//   token     { accessToken, refreshAt, expiresAt }, always replaced as one unit.
-//             Empty until the first exchange.
+//   token     { accessToken, refreshAt, expiresAt }. Empty until the first exchange,
+//             then always replaced as one atomic update.
 //   exchange  the token exchange that is running, if any
+//   lock      One lock per client. Every write to token or exchange is made under it.
+//             A call that finds a fresh token takes no lock.
+//             Nobody holds it while waiting for a network call.
+//             Single-threaded runtimes (JS, Python async) need no lock.
+// Words used below:
+//   now       the current time in UTC, read each time it is used
+//   start f   run f without waiting for it to finish. Gives back a handle to the
+//             running work.
+//   wait for  pause until that work ends, then receive its result or its error
 
-// Runs before every API request.
+// Runs before every API request. Returns a token, or fails with the exchange's error.
 getAccessToken():
-    t = token
+    t = token                                       // first check, without the lock
     if t is not empty and now < t.refreshAt:        // Case 1: fresh
         return t.accessToken
-    if t is not empty and now < t.expiresAt:        // Case 2: refresh due
-        // No background refresh in the last tokenRefreshCutoffInSec seconds.
-        if t.expiresAt - now > tokenRefreshCutoffInSec:
-            startOrJoinExchange()                   // not waited for
-        return t.accessToken
-    // Case 3: no usable token. The caller gets the new token or the error.
-    // A caller that cancels or times out stops only its own wait.
-    return wait for startOrJoinExchange()
 
-// At most one exchange per client.
+    with lock:
+        t = token                                   // second check, under the lock
+        if t is not empty and now < t.refreshAt:    // Case 1: a new token was just stored
+            return t.accessToken
+        if t is not empty and now < t.expiresAt:    // Case 2: refresh due
+            // No background refresh in the last tokenRefreshCutoffInSec seconds.
+            if t.expiresAt - now > tokenRefreshCutoffInSec:
+                startOrJoinExchange()               // not waited for
+            return t.accessToken
+        e = startOrJoinExchange()                   // Case 3: no usable token
+
+    // Outside the lock. The caller gets the new token or the error.
+    // A caller that cancels or times out stops only its own wait.
+    return wait for e
+
+// At most one exchange per client. Called with the lock held.
+// Always returns the running exchange.
 startOrJoinExchange():
     if exchange is empty:
         exchange = start runExchange()
     return exchange
 
+// Started, not called: the caller does not wait for it, and releases the lock at once.
+// It takes the lock itself, only for the short steps inside "with lock" below.
 runExchange():
     try:
         // The existing token request and its retries, with a timeout per attempt.
         response = request a token
-        storeNewToken(response)
+        with lock:
+            storeNewToken(response)
         return response.access_token
     on error:
-        backOff()
-        fail with the error                         // reaches only waiting calls (Case 3)
+        with lock:
+            backOff()
+        // The error becomes the outcome of the exchange. Case 3 calls are waiting
+        // for it and receive it. A Case 2 call did not wait, so it never sees it.
+        fail with the error
     finally:
-        exchange = empty
+        // Always runs, after the token was written.
+        with lock:
+            exchange = empty
 
+// Called with the lock held.
 storeNewToken(response):
     T              = response.expires_in
     // Sampled once per token.
@@ -270,13 +296,12 @@ storeNewToken(response):
               refreshAt: now + T * effectiveRatio,
               expiresAt: now + T }
 
-// After a failed exchange.
+// After a failed exchange. Called with the lock held.
 backOff():
     t = token
     if t is empty or now >= t.expiresAt:
         return                                      // no valid token to keep
     // Keep the token and try again at half the remaining time.
-    // Skipped if the token was replaced or discarded since it was read.
     token = { t.accessToken,
               refreshAt: now + (t.expiresAt - now) / 2,
               expiresAt: t.expiresAt }
@@ -300,9 +325,10 @@ sendToOpenFGA(request):
     return response                                 // a second 401 goes to the caller
 
 discardToken(used):
-    // Only the token that was sent. A token another call has stored since is kept.
-    if token is not empty and token.accessToken == used:
-        token = empty
+    with lock:
+        // Only the token that was sent. A token another call has stored since is kept.
+        if token is not empty and token.accessToken == used:
+            token = empty
 ```
 
 ## What the SDK does in each situation
@@ -320,9 +346,9 @@ discardToken(used):
 
 All six runtimes (Python has a sync and an async client) follow the same five rules.
 
-1. Reading the token takes no lock. The token, `refreshAt` and `expiresAt` are swapped as one unit. Where a runtime uses a lock, it guards only the record of whether an exchange is running, and the SDK never holds it during a network call.
-2. A client runs one token exchange at a time. However many calls arrive at once, the client sends one token request. Calls in Case 2 return at once with the cached token. Calls in Case 3 wait on the same exchange.
-3. Every token request has a timeout. Each attempt uses the SDK's configured timeout, or 10 seconds if none is set. The record of the running exchange is always cleared when it ends, so a token endpoint that never answers cannot block later exchanges.
+1. A call that finds a fresh token takes no lock. Every change to the token, or to the record of the running exchange, is made under one lock per client, so the token, `refreshAt` and `expiresAt` always change together. The SDK never holds the lock while it waits for a network call. JS and Python's async client run on one thread and need no lock.
+2. A client runs one token exchange at a time. However many calls arrive at once, the client sends one token request. Calls in Case 2 return at once with the cached token. Calls in Case 3 wait on the same exchange. Before it starts an exchange, the client checks the token again under the lock, so a call that read an old token just before an exchange finished does not start another.
+3. Every token request has a timeout. Each attempt uses the SDK's configured timeout, or 10 seconds if none is set. The record of the running exchange is always cleared when it ends, so a token endpoint that never answers cannot block later exchanges. An exchange is recorded before it can end, so the record is never left pointing at a finished exchange.
 4. One caller giving up does not stop the exchange. If several calls are waiting for a token exchange and one of them is cancelled or times out, only that call stops waiting. The exchange continues and the other calls get its result.
 5. Background errors stay inside the SDK. They do not surface as unhandled promise rejections or unobserved task exceptions, and the process can exit without the client being closed.
 
