@@ -137,9 +137,7 @@ No API call failed or waited. Today, JS, Python, Java and .NET start replacing a
 
 The ratio puts the refresh point 240 to 270 seconds into the token's life, which leaves 30 to 60 seconds. That is inside the 60-second cutoff, so the SDK does not refresh in the background. It uses the token for the full 5 minutes, and the first call after that waits for a new token. That is one token request every 5 minutes. Today JS, Python, Java and .NET make one on every API call, and Go makes one every 4 minutes 50 seconds.
 
-To give a short-lived token a background refresh, lower the ratio or the cutoff. With a ratio of `0.5`, the refresh point is 150 to 180 seconds in, with 2 to 2.5 minutes left.
-
-With the defaults, a background refresh can start only between the refresh point and 60 seconds before expiry. For a token of 5 minutes or less that window is empty. It is up to 1 minute long for a 10-minute token, and 5 to 11 minutes long for a 1-hour token.
+To give a short-lived token a background refresh, lower the ratio or the cutoff. With a ratio of `0.5`, the refresh point is 150 to 180 seconds in, with 2 to 2.5 minutes left. **_This will be noted explicitly in the README.md of each SDK._**
 
 ## Example 3: a token that OpenFGA rejects
 
@@ -149,12 +147,13 @@ A `403` is handled as it is today. It means the token is valid but is not allowe
 
 ## Runway by token lifetime
 
-The table assumes the default jitter and cutoff.
+The table assumes the default jitter (0.1) and cutoff (60 seconds). Each range is the time left on the token at its refresh point. Refresh attempts can start until 60 seconds before expiry.
 
 | Token lifetime | Ratio `0.8` (default) | Ratio `0.5` |
-|---|---|---|
+| --- | --- | --- |
 | 24 hours | 2.4 to 4.8 hours | 9.6 to 12 hours |
 | 1 hour | 6 to 12 minutes | 24 to 30 minutes |
+| 10 minutes | 1 to 2 minutes | 4 to 5 minutes |
 | 5 minutes | None (inside the cutoff) | 2 to 2.5 minutes |
 
 # How it Works
