@@ -222,7 +222,7 @@ flowchart TD
 
 ## Pseudocode
 
-The rules above as one language-neutral block. [In each runtime](#in-each-runtime) lists how each SDK implements it.
+The behaviour described as one language-neutral block. [In each runtime](#in-each-runtime) lists how each SDK implements it.
 
 ```
 // Client credentials only. Kept per client:
