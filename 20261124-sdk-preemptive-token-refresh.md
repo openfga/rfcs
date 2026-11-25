@@ -169,7 +169,7 @@ When a token exchange returns a token with lifetime `T`:
 - `refreshAt = now + T * effectiveRatio`, where `effectiveRatio = min(tokenRefreshRatio + random(0, tokenRefreshJitterRatio), 0.9)` is sampled once per token.
 - The lifetime comes only from `expires_in` in the token exchange response. Access tokens are opaque to the SDK and are never decoded.
 - `now` is the time the response arrives, so the SDK's expiry is later than the issuer's by the time the response took to arrive. The [`401` handling](#handling-a-401) covers a token that expires on the server first.
-- All five SDKs read the time in UTC, never in local time, so a time zone or daylight-saving change does not move the refresh point. If the machine's clock is set back, the SDK can treat an expired token as valid. The [`401` handling](#handling-a-401) covers that.
+- All five SDKs read the time in UTC, never in local time, so a time zone or daylight-saving change does not move the refresh point. If the machine's clock is set back, the SDK can treat an expired token as valid. The [`401` handling](#handling-a-401) covers that. [Alternatives](#alternatives) explains why the SDKs do not use a monotonic clock.
 
 ## On each API call
 
