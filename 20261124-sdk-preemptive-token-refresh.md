@@ -354,18 +354,24 @@ All six runtimes (Python has a sync and an async client) follow the same five ru
 
 ## In each runtime
 
+Every runtime follows the pseudocode. They differ in how the exchange is started in the background and in how a waiting call waits for it.
+
 | Runtime | How the background refresh runs | How waiting calls share the exchange |
 |---|---|---|
-| JS | The shared promise is started without being awaited, with an error handler attached in the same tick | Waiting calls await the same promise |
-| Go | One goroutine, on a context detached from every caller and with its own timeout | Waiting calls wait on a channel that closes when the exchange ends, and on their own request context |
-| Java | The JDK HTTP client's asynchronous send, with no new executor or thread. The call that triggered it receives an already completed future | One in-flight `CompletableFuture`. Each waiting call gets a copy, so cancelling the copy does not cancel the exchange |
-| Python (async) | An `asyncio` task that the client keeps a reference to | Waiting calls await the task through `asyncio.shield` |
-| Python (sync) | One short-lived daemon thread | A `Future` that waiting threads join outside the lock. In Case 3, if no exchange is running, the first caller runs it on its own thread |
-| .NET | The shared task, started and observed so that a failure is not an unobserved exception | One in-flight `Task` that runs with `CancellationToken.None`. A caller's token cancels only its own wait |
+| JS | The exchange is one shared promise. A Case 2 call starts it without awaiting it and attaches an error handler at once, so a failure is not an unhandled rejection | Waiting calls await the same promise. One of them cannot cancel it for the others |
+| Go | One goroutine. Its context ignores every caller's cancellation, so no caller can stop it, and it has its own timeout, so it always ends | Each waiting call waits for whichever comes first: a channel that closes when the exchange ends, or the end of its own request context |
+| Java | The JDK HTTP client's asynchronous send, so the SDK creates no thread and no executor. A Case 2 call gets back an already completed future that holds the current token, not the future of the exchange | One in-flight `CompletableFuture`. Each waiting call gets a copy, so cancelling the copy does not cancel the exchange |
+| Python (async) | An `asyncio` task. The client keeps a reference to it, so it is not garbage-collected while it runs | Waiting calls await the task through `asyncio.shield`, so cancelling one call does not cancel the task |
+| Python (sync) | One short-lived daemon thread, which does not keep the interpreter from exiting | A `Future` shared by the waiting threads. Each thread takes it under the lock, releases the lock, then waits for its result. In Case 3, if no exchange is running, the first caller makes the token request on its own thread instead of starting one |
+| .NET | One shared `Task`. If it fails, the SDK reads its exception, so the application does not get an unobserved task exception | The task runs with `CancellationToken.None`, so no caller can cancel it. Each waiting call waits on it with its own cancellation token, which ends only that call's wait |
 
-In Go, `Token()` on the token source keeps its signature, and the transport calls a context-aware variant so that a request's context can end that request's wait. Java adds no executor, because `OpenFgaClient` is not `AutoCloseable` and a non-daemon thread would keep the JVM from exiting. The JS token code calls the SDK's own request helper, so it does not depend on the HTTP library underneath.
+Three choices need a reason:
 
-Closing or disposing the client while a refresh is running is safe in Python (async) and .NET. Python cancels and awaits the task before it closes the HTTP session, and .NET observes and ignores the resulting error.
+- In Go, `Token()` on the public `TokenSource` interface takes no context, and changing it would break existing code. It keeps its signature. The SDK's transport calls a new variant that takes the request's context, which is what lets a waiting call stop when its request is cancelled.
+- Java adds no executor. An executor's threads have to be shut down, or they keep the JVM from exiting, and `OpenFgaClient` has no `close()` method (it is not `AutoCloseable`) in which to do that.
+- The JS token code calls the SDK's own request helper and not the HTTP library, so it does not change if the SDK changes its HTTP library.
+
+Python's async client cancels a running refresh in `close()` before it closes the HTTP session. Python's sync client and the .NET client also have a close or dispose method, and those do not change: a refresh in flight completes or fails by itself, and a failure stays inside the SDK. The Go, Java and JS clients have no such method and still need none.
 
 ## Handling a 401
 
