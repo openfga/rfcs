@@ -45,10 +45,10 @@ The client-credentials configuration gets three optional settings. Existing appl
 
 | | On `main` today |
 |---|---|
-| When a token is replaced | When an API call finds it inside a fixed buffer before expiry: 300 seconds plus up to 300 seconds of jitter in JS, Python, Java and .NET, and a fixed 10 seconds in Go |
+| When a token is replaced | When an API call finds it inside a fixed buffer before expiry (300 seconds plus up to 300 seconds of jitter in JS, Python, Java and .NET, and a fixed 10 seconds in Go) |
 | Where the token exchange runs | Inside that API call, which waits for it |
 | If the token exchange fails | The API call fails, even when the cached token is still valid |
-| Concurrent calls | They wait for one token exchange. In Go and Python, if it fails, each waiting call then makes its own token request, one after another |
+| Concurrent calls | They wait for one token exchange. If it fails, Go and Python do not share the failure and each waiting call makes its own token request in turn |
 | A `401` from OpenFGA | The SDK returns the error and keeps the token cached until it expires |
 
 ## Problems with this behaviour
@@ -57,16 +57,10 @@ The client-credentials configuration gets three optional settings. Existing appl
 2. A fixed buffer does not suit every token lifetime. For a 24-hour token, the SDK first asks for a replacement 5 to 10 minutes before expiry (10 seconds in Go), which leaves little time to recover from a failure. For a 5-minute token, the buffer is at least as long as the token's life, so JS, Python, Java and .NET request a new token on every API call.
 3. A rejected token keeps being sent. If OpenFGA answers `401`, the SDK returns the error and reuses the same token on the next call, until the token expires.
 
-## Use cases
-
-- Applications that should keep working through an outage of their token issuer.
-- Token issuers that use short-lived tokens.
-- Deployments where a token can be rejected before it expires, for example after a token or signing key is revoked.
-
 ## Expected outcome
 
 - A token endpoint outage shorter than the runway causes no failed API call.
-- With the defaults a token is used for at least 80% of its lifetime before it is replaced. So when refreshes succeed, the SDK makes at most 1.25 token requests per lifetime (`1 / 0.8`), for example 5 requests in 4 days for a 24-hour token.
+- With the defaults, a token is used for at least 80% of its lifetime before it is replaced. So when refreshes succeed, the SDK makes at most 1.25 token requests per lifetime (`1 / 0.8`), for example 5 requests in 4 days for a 24-hour token.
 - A `401` caused by a rejected token is retried once with a new token.
 - All five SDKs behave the same way and offer the same settings.
 
