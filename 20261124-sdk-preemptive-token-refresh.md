@@ -81,7 +81,7 @@ Application developers who use client credentials are the ones affected. The API
 | `tokenRefreshJitterRatio` | The upper bound of a random fraction added to the ratio, so that clients started together do not all refresh together. `0` turns jitter off | `0.1` | `0` to `0.4` |
 | `tokenRefreshCutoffInSec` | The SDK does not start a background refresh during the last this-many seconds of a token's life. `0` turns the cutoff off | `60` | A whole number, `0` or more |
 
-The ratio plus the sampled jitter is capped at `0.9`. That is why the jitter stops at `0.4`. The lowest ratio is `0.5`, so a larger jitter could never take full effect. With a ratio of `0.9`, jitter has no effect at all.
+The ratio plus the jitter never passes `0.9`. If the two settings add up to more than that, the SDK draws the jitter from a smaller range, `0` to `0.9` minus the ratio, so refresh points stay spread over that range and do not collect at `0.9`. That is why the jitter stops at `0.4`. The lowest ratio is `0.5`, so a larger jitter could never be used in full. With a ratio of `0.9` there is no room left, and jitter has no effect.
 
 The two ratios accept any number in their range, with no limit on decimal places. A limit would protect nothing that the range check does not, and checking decimal places on floating-point numbers is unreliable. A ratio that is not a number (NaN) is rejected, and so is a cutoff that is not a whole number.
 
@@ -168,7 +168,7 @@ The SDK keeps three values together: the access token, `refreshAt` and `expiresA
 When a token exchange returns a token with lifetime `T`:
 
 - `expiresAt = now + T`.
-- `refreshAt = now + T * effectiveRatio`, where `effectiveRatio = min(tokenRefreshRatio + random(0, tokenRefreshJitterRatio), 0.9)` is sampled once per token.
+- `refreshAt = now + T * effectiveRatio`, where `effectiveRatio = tokenRefreshRatio + random(0, jitterRange)` is sampled once per token and `jitterRange = min(tokenRefreshJitterRatio, 0.9 - tokenRefreshRatio)`.
 - The lifetime comes only from `expires_in` in the token exchange response. Access tokens are opaque to the SDK and are never decoded.
 - `now` is the time the response arrives, so the SDK's expiry is later than the issuer's by the time the response took to arrive. The [`401` handling](#handling-a-401) covers a token that expires on the server first.
 - All five SDKs read the time in UTC, never in local time, so a time zone or daylight-saving change does not move the refresh point. If the machine's clock is set back, the SDK can treat an expired token as valid. The [`401` handling](#handling-a-401) covers that. [Alternatives](#alternatives) explains why the SDKs do not use a monotonic clock.
@@ -302,8 +302,9 @@ retire(e):
 // Called with the lock held.
 storeNewToken(response):
     T              = response.expires_in
-    // Sampled once per token.
-    effectiveRatio = min(tokenRefreshRatio + random(0, tokenRefreshJitterRatio), 0.9)
+    // Sampled once per token. The jitter range is cut to what fits below 0.9.
+    jitterRange    = min(tokenRefreshJitterRatio, 0.9 - tokenRefreshRatio)
+    effectiveRatio = tokenRefreshRatio + random(0, jitterRange)
     token = { response.access_token,
               refreshAt: now + T * effectiveRatio,
               expiresAt: now + T }
