@@ -231,16 +231,17 @@ The behaviour described as one language-neutral block. [In each runtime](#in-eac
 // Client credentials only. Kept per client:
 //   token     { accessToken, refreshAt, expiresAt }. Empty until the first exchange,
 //             then always replaced as one atomic update.
-//   exchange  the token exchange that is running, if any
+//   exchange  the handle of the token exchange that is running, if any
 //   lock      One lock per client. Every write to token or exchange is made under it.
 //             A call that finds a fresh token takes no lock.
 //             Nobody holds it while waiting for a network call.
 //             Single-threaded runtimes (JS, Python async) need no lock.
 // Words used below:
 //   now       the current time in UTC, read each time it is used
-//   start f   run f without waiting for it to finish. Gives back a handle to the
-//             running work.
-//   wait for  pause until that work ends, then receive its result or its error
+//   handle    stands for one token exchange. It is created before the exchange
+//             starts, and it ends once, with the new access token or with an error.
+//   start f   run f without waiting for it to finish
+//   wait for  pause until that handle ends, then receive its token or its error
 
 // Runs before every API request. Returns a token, or fails with the exchange's error.
 getAccessToken():
@@ -264,31 +265,39 @@ getAccessToken():
     return wait for e
 
 // At most one exchange per client. Called with the lock held.
-// Always returns the running exchange.
+// Always returns the handle of the running exchange.
 startOrJoinExchange():
     if exchange is empty:
-        exchange = start runExchange()
+        exchange = new handle                       // recorded before the work starts
+        start runExchange(exchange)
     return exchange
 
 // Started, not called: the caller does not wait for it, and releases the lock at once.
-// It takes the lock itself, only for the short steps inside "with lock" below.
-runExchange():
+// It takes the lock itself only after the token request has ended, for a short step
+// that clears the record and changes the token together. So no call can join an
+// exchange whose result is already stored.
+runExchange(e):
     try:
         // The existing token request and its retries, with a timeout per attempt.
         response = request a token
         with lock:
+            retire(e)
             storeNewToken(response)
-        return response.access_token
+        end e with response.access_token
     on error:
         with lock:
+            retire(e)
             backOff()
-        // The error becomes the outcome of the exchange. Case 3 calls are waiting
-        // for it and receive it. A Case 2 call did not wait, so it never sees it.
-        fail with the error
-    finally:
-        // Always runs, after the token was written.
-        with lock:
-            exchange = empty
+        // Case 3 calls are waiting on e and receive the error.
+        // A Case 2 call did not wait, so it never sees it.
+        end e with the error
+
+// Called with the lock held. Clears the record, but only if it still holds this
+// handle. It no longer does if storing the token failed. The record was cleared
+// just before, and another call may have started a new exchange since.
+retire(e):
+    if exchange is e:
+        exchange = empty
 
 // Called with the lock held.
 storeNewToken(response):
@@ -351,7 +360,7 @@ All six runtimes (Python has a sync and an async client) follow the same five ru
 
 1. A call that finds a fresh token takes no lock. Every change to the token, or to the record of the running exchange, is made under one lock per client, so the token, `refreshAt` and `expiresAt` always change together. The SDK never holds the lock while it waits for a network call. JS and Python's async client run on one thread and need no lock.
 2. A client runs one token exchange at a time. However many calls arrive at once, the client sends one token request. Calls in Case 2 return at once with the cached token. Calls in Case 3 wait on the same exchange. Before it starts an exchange, the client checks the token again under the lock, so a call that read an old token just before an exchange finished does not start another.
-3. Every token request has a timeout. Each attempt uses the SDK's configured timeout, or 10 seconds if none is set. The record of the running exchange is always cleared when it ends, so a token endpoint that never answers cannot block later exchanges. An exchange is recorded before it can end, so the record is never left pointing at a finished exchange.
+3. Every token request has a timeout. Each attempt uses the SDK's configured timeout, or 10 seconds if none is set. The record of the running exchange is always cleared when it ends, so a token endpoint that never answers cannot block later exchanges. It is cleared in the same step that stores the new token or moves `refreshAt`. Otherwise a call whose new token was just rejected with `401` could join the exchange that fetched that token and receive it again. An exchange is recorded before it can end, so the record is never left pointing at a finished exchange.
 4. One caller giving up does not stop the exchange. If several calls are waiting for a token exchange and one of them is cancelled or times out, only that call stops waiting. The exchange continues and the other calls get its result.
 5. Background errors stay inside the SDK. They do not surface as unhandled promise rejections or unobserved task exceptions. A background refresh also leaves no timer or non-daemon thread behind, so the application can shut down without closing the client.
 
