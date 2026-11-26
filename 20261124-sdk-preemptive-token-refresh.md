@@ -378,6 +378,8 @@ Only Python's async client changes its `close()`. There the refresh is an `async
 
 ## Handling a 401
 
+The OAuth specifications allow for this. A server may expire a token early, so a client must not expect a token to stay valid for its whole lifetime ([draft 17 of OAuth 2.1, section 3.2.3](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1-17#section-3.2.3)). When a token is then rejected as invalid, [RFC 6750, section 3.1](https://datatracker.ietf.org/doc/html/rfc6750#section-3.1) lets the client request a new access token and retry the request.
+
 - This applies only to client credentials, and only to `401`. A `403` never discards the token.
 - The SDK discards the cached token only if it is still the token that was sent with the rejected request. If another call has already replaced it, the SDK keeps the new token, so parallel `401` responses cannot throw away a token that was just fetched.
 - The call is then in Case 3, so it waits for the shared token exchange. If another call has already stored a new token, the call is in Case 1 instead and uses that token without waiting.
@@ -449,7 +451,7 @@ The SDKs no longer use `TokenExpiryThresholdBufferInSec` and `TokenExpiryJitterI
 # Prior Art
 [prior-art]: #prior-art
 
-No standard says when a client should replace a token that is still valid. RFC 6749, RFC 6750, RFC 9700, RFC 8725, the OAuth 2.1 draft and the FAPI 2.0 Security Profile do not cover it. Open-source projects fall into two groups.
+No standard says when a client should replace a token that is still valid. [RFC 6749](https://datatracker.ietf.org/doc/html/rfc6749), [RFC 6750](https://datatracker.ietf.org/doc/html/rfc6750), [RFC 9700](https://datatracker.ietf.org/doc/html/rfc9700), the [OAuth 2.1 draft](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1) and the [FAPI 2.0 Security Profile](https://openid.net/specs/fapi-security-profile-2_0-final.html) do not cover it. Open-source projects fall into two groups.
 
 The first group refreshes at a fraction of the lifetime.
 
