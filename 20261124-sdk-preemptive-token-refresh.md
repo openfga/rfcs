@@ -459,7 +459,7 @@ The first group refreshes at a fraction of the lifetime.
 |---|---|---|
 | [Envoy](https://github.com/envoyproxy/envoy/blob/v1.40.2/source/extensions/http/injected_credentials/oauth2/token_provider.cc#L108-L162) credential injector (OAuth 2.0 client credentials) | 50% of `expires_in` | Keeps the token until expiry and retries every 2 seconds |
 | [SPIRE](https://github.com/spiffe/spire/blob/v1.16.0/pkg/common/rotationutil/rotationutil.go#L97-L139) agent | 50%, with jitter | Returns the cached token if it has not expired |
-| [Istio](https://github.com/istio/istio/blob/1.32.0/pilot/cmd/pilot-agent/options/options.go#L81-L91) workload certificates | 50%, with jitter | Envoy keeps the previous certificate |
+| [Istio](https://github.com/istio/istio/blob/1.32.0/pilot/cmd/pilot-agent/options/options.go#L81-L91) workload certificates | 50%, with jitter | Istio's Envoy proxy keeps the previous certificate and asks again with a back-off |
 | [cert-manager](https://github.com/cert-manager/cert-manager/blob/v1.21.3/pkg/util/pki/renewaltime.go#L125-L143) | Two thirds of the certificate's duration | Backs off from 1 hour up to 32 hours |
 | [Linkerd](https://github.com/linkerd/linkerd2-proxy/blob/release/v2.374.0/linkerd/proxy/identity-client/src/certify.rs#L188-L203) proxy identity | 70% of the remaining validity | Waits 70% of what is left, with a 10-second floor |
 | [Kubernetes kubelet](https://github.com/kubernetes/kubernetes/blob/v1.37.2/pkg/kubelet/token/token_manager.go#L172-L195) service account tokens | 80% of the lifetime, or after 24 hours if that comes first, with jitter | Returns the old token if it is still valid |
