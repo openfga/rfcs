@@ -389,12 +389,12 @@ The SDK counts every successful token exchange, in the foreground or in the back
 
 ## Where the changes land
 
-1. `sdk-generator` gets the default values as shared constants, and the README section that documents the settings.
+1. `sdk-generator` gets the default values as shared constants, and the README section that documents the three new settings (`tokenRefreshRatio`, `tokenRefreshJitterRatio` and `tokenRefreshCutoffInSec`, described under [The settings](#the-settings)).
 2. The token logic is written by hand in each of the five SDK repositories, with one pull request per SDK. Every SDK tests the same list of scenarios with a controlled clock.
-3. The Spring Boot starter gets the three properties once the Java SDK release is out.
+3. The Spring Boot starter gets the three matching properties (`token-refresh-ratio`, `token-refresh-jitter-ratio` and `token-refresh-cutoff-in-sec`) once the Java SDK release is out.
 4. The CLI and the Terraform provider pick up the new behaviour with the default settings when they update `go-sdk`.
 
-The Java SDK keeps one token client per credential identity (client ID, client secret, issuer, audience and scopes). The three settings are not part of that identity. If two credentials objects have the same identity and different settings, they share one token client and the settings of the first one used apply. The Java README will document this.
+In the Java SDK, credentials can also be passed with a single request, so one client can see several credentials objects. The SDK stores a separate token for each distinct combination of client ID, client secret, issuer, audience and scopes, and refreshes each token on its own. The ratio, jitter and cutoff settings are not part of that combination. If two credentials objects differ only in those three settings, they share one token, and it is refreshed with the settings of whichever was used first. Making the settings part of the combination would mean two tokens for the same identity. The Java README will document this.
 
 # Migration
 [migration]: #migration
