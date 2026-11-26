@@ -292,9 +292,10 @@ runExchange(e):
         // A Case 2 call did not wait, so it never sees it.
         end e with the error
 
-// Called with the lock held. Clears the record, but only if it still holds this
-// handle. It no longer does if storing the token failed. The record was cleared
-// just before, and another call may have started a new exchange since.
+// Called with the lock held. Clears the record only if it still holds this handle.
+// The check matters in one case. If storeNewToken fails, runExchange has already
+// called retire(e) once, and its error path calls it again. Between the two, another
+// API call may have started a new exchange, and its record must stay.
 retire(e):
     if exchange is e:
         exchange = empty
