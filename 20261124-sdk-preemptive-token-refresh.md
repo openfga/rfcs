@@ -79,9 +79,11 @@ Application developers who use client credentials are the ones affected. The API
 |---|---|---|---|
 | `tokenRefreshRatio` | The fraction of a token's lifetime after which the SDK starts trying to replace it | `0.8` | `0.5` to `0.9` |
 | `tokenRefreshJitterRatio` | The upper bound of a random fraction added to the ratio, so that clients started together do not all refresh together. `0` turns jitter off | `0.1` | `0` to `0.4` |
-| `tokenRefreshCutoffInSec` | The SDK does not start a background refresh during the last this-many seconds of a token's life. `0` turns the cutoff off | `60` | `0` or more |
+| `tokenRefreshCutoffInSec` | The SDK does not start a background refresh during the last this-many seconds of a token's life. `0` turns the cutoff off | `60` | A whole number, `0` or more |
 
 The ratio plus the sampled jitter is capped at `0.9`. That is why the jitter stops at `0.4`. The lowest ratio is `0.5`, so a larger jitter could never take full effect. With a ratio of `0.9`, jitter has no effect at all.
+
+The two ratios accept any number in their range, with no limit on decimal places. A limit would protect nothing that the range check does not, and checking decimal places on floating-point numbers is unreliable. A ratio that is not a number (NaN) is rejected, and so is a cutoff that is not a whole number.
 
 ## The settings in each SDK
 
@@ -170,6 +172,7 @@ When a token exchange returns a token with lifetime `T`:
 - The lifetime comes only from `expires_in` in the token exchange response. Access tokens are opaque to the SDK and are never decoded.
 - `now` is the time the response arrives, so the SDK's expiry is later than the issuer's by the time the response took to arrive. The [`401` handling](#handling-a-401) covers a token that expires on the server first.
 - All five SDKs read the time in UTC, never in local time, so a time zone or daylight-saving change does not move the refresh point. If the machine's clock is set back, the SDK can treat an expired token as valid. The [`401` handling](#handling-a-401) covers that. [Alternatives](#alternatives) explains why the SDKs do not use a monotonic clock.
+- `refreshAt` and `expiresAt` keep the clock's full precision and are not rounded to whole seconds. Rounding would be one more rule for every SDK to match, and it would change nothing a user can see.
 
 ## On each API call
 
@@ -411,7 +414,7 @@ The refresh itself is not a breaking change. It changes or removes no public API
 
 - In Go, the ratio replaces the fixed 10-second buffer with no jitter. After a failed exchange, waiting calls no longer each send their own token request.
 - In both Python clients, waiting calls no longer each send their own token request after a failed exchange. The sync client's token requests now use the retry and telemetry settings of the client. Today they use defaults, because the sync client does not pass its configuration to the token code. Expiry is no longer tracked in local time, which shifts by an hour at a daylight-saving change.
-- Java samples jitter once per token. Today it draws a new random value on every API call, so a busy client refreshes soon after the token enters its last 10 minutes, and the jitter does little to spread refreshes out. Expiry is no longer rounded down to whole seconds.
+- Java samples jitter once per token. Today it draws a new random value on every API call, so a busy client refreshes soon after the token enters its last 10 minutes, and the jitter does little to spread refreshes out. Java also stops rounding expiry down to whole seconds, which no other SDK does.
 - .NET samples jitter once per token, as Java does. It replaces the token and its expiry together. Today it writes them in two steps, and a call that reads between them sees a token with no expiry. One caller's cancellation no longer cancels the exchange for the other callers. Expiry uses UTC instead of local time.
 - JS token requests go through the SDK's HTTP client, with a 10-second timeout per attempt. Before, when the application did not pass its own HTTP client, token requests used a default client with no timeout. Token requests now also carry the SDK's `User-Agent` and any default headers set in `baseOptions`.
 
