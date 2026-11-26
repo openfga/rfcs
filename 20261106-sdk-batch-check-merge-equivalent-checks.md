@@ -131,7 +131,7 @@ When the option is on, the SDK:
 
 1. Fixes the store ID and model ID for the whole call. Reading the model and sending the checks must use the same model, or merges could be wrong.
 2. Validates every correlation ID you passed in (see [Errors](#errors)), so merging can't hide an invalid one.
-3. Gets the model from the [model cache](#model-cache). Only the first call for a model reads it from the server, and calls running in parallel share that one read. If the model or store doesn't exist, or the credentials can't read the model, the call fails before anything is sent. If the model can't be read for another reason, the SDK skips steps 4 and 6 and sends the checks unmerged, as it does today (see [Errors](#errors)).
+3. Gets the model from the [model cache](#model-cache). Only the first call for a model reads it from the server, and calls running in parallel share that one read. If the model or store doesn't exist, or the credentials can't read the model, the call fails before anything is sent. If the model can't be read for another reason, the SDK skips steps 4 and 6 and sends the checks unmerged, as it does today, without retrying the read (see [Errors](#errors)).
 4. **Resolve:** groups the checks and builds the list to send.
 5. Sends that list in batches, as it does today. Grouping covers all checks in the call before they're split into batches, so checks that would land in different batches can still merge.
 6. **Expand:** copies each answer back to every check in its group.
@@ -180,7 +180,7 @@ These apply only when the option is on. With it off, nothing changes.
 | Duplicate correlation IDs | Validation error, as today. |
 | The model or store doesn't exist (`authorization_model_not_found` or `store_id_not_found`) | The call fails with that error before any check is sent. BatchCheck would fail the same way. Not remembered, so the next call reads again. |
 | The credentials can't read the model (a 401 or 403, or the SDK can't get a token) | The call fails with that error before any check is sent. Falling back would hide wrong credentials: the developer would think the option works when it never merges. Not remembered, so the call works again as soon as the credentials are fixed. |
-| Reading the model fails for another reason (for example 429, a 5xx, a timeout or a network error) | The SDK sends the checks unmerged, as it does today, so a short outage of the model read doesn't break the call. It logs a warning and records the fallback in [telemetry](#telemetry). A 429 is remembered for a short time (for example, a minute), so the SDK doesn't retry the read on every call. Other failures aren't remembered, so the next call reads again. |
+| Reading the model fails for another reason (for example 429, a 5xx, a timeout or a network error) | The SDK sends the checks unmerged, as it does today, so a short outage of the model read doesn't break the call. It logs a warning and records the fallback in [telemetry](#telemetry). The SDK doesn't retry this read, even if the call sets retry options, so a failure costs one request (see [Response time](#response-time)). A 429 is remembered for a short time (for example, a minute), so the SDK doesn't read again on every call. Other failures aren't remembered, so the next call reads again. |
 | A check's object type, relation, user type or userset relation isn't in the model | Sent as is. The server returns its usual error. |
 | A BatchCheck request fails | The call fails, as today. |
 | One check in a request returns an error | Only that check's group is affected. The error is copied to every check in the group. For example, if `can_share` was merged into `can_view` and `can_view` returns an error, `can_share` gets the same error. |
@@ -194,8 +194,24 @@ Reading the model on every call would add a ReadAuthorizationModel call to each 
 - Only successful reads are cached. Calls for the same model share one in-flight read, so 50 parallel BatchCheck calls make one ReadAuthorizationModel request. Every waiting call gets that read's result, including a failure.
 - Waiting for the model counts toward the call's own timeout where the SDK has one (for example, a Go context deadline). A call that times out or is cancelled stops waiting; the read continues for the other calls.
 - A 429 is remembered for a short time, so rate limiting doesn't add a read to every call. Other failures aren't remembered (see [Errors](#errors)).
+- Each client reads each model once. If many clients start at once (for example, after a deploy), some reads can get a 429. Those clients send unmerged and read again about a minute later. In a test with a limit of 30 reads a minute, 60 clients were all merging after about a minute and 120 after about 3 minutes. No call failed.
 - It holds a small, bounded number of models and drops the least recently used.
 - To benefit, create the client once and reuse it, as the SDKs already recommend.
+
+## Response time
+
+With the option off, a call takes as long as its checks take to come back. With it on, the call also:
+
+| Step | Cost | Measured |
+|---|---|---|
+| Reads the model | One request, only on a client's first call for that model. Calls running at the same time share it. | 33 ms, once per client and model |
+| Resolves | In memory | 0.07 ms for 50 checks, about 1.3 ms for 1,000 |
+| Sends the checks | The same as today, for the same or fewer checks | Never slower. Faster when merging removes whole requests: 1,000 checks took 57 ms instead of 125 ms |
+| Expands | In memory | At most 0.3 ms |
+
+- If nothing merges, the option adds about 2 to 3 ms at 1,000 checks.
+- If the model read fails, the call costs one failed request plus the usual time. With retries, a failed first call for 200 checks took 1.1 to 1.5 s. Without them, about 80 ms. So the SDK doesn't retry this read.
+- Measured with the Python SDK against OpenFGA v1.23.0, with 30 ms added to every request, using a model where 10 relations per type collapse to 4 checks. Median of repeated runs.
 
 ## Where the logic lives
 
@@ -291,7 +307,7 @@ None. The option is off by default, so it works as a feature flag: nothing chang
 # Drawbacks
 [drawbacks]: #drawbacks
 
-- **One model read per model ID:** the first BatchCheck for each model in a client reads it. Short-lived clients don't benefit from the cache. For small batches with few aliases, the option may save little or nothing.
+- **One model read per model ID:** the first BatchCheck for each model in a client reads it. Short-lived clients don't benefit from the cache. For small batches with few aliases, the option may save little or nothing. The read endpoint often has a much lower rate limit than Check, so many clients starting at once can send unmerged for a minute or two (see [Model cache](#model-cache)).
 - **Needs read access to the model:** credentials that can only run checks get an error with the option on. Some integrations might use such credentials; they can leave the option off.
 - **Harder to debug:** the SDK changes what it sends. Every check goes out with its final relation, so a server error names `viewer`, not the `can_share` you asked for.
 - **Risk of drift:** a ported Resolve could read the model differently from `language` or the server. This is reduced by keeping the rules in `language`, running the shared tests, and later opening a PR in each SDK automatically when `language` changes.
@@ -305,6 +321,7 @@ None. The option is off by default, so it works as a feature flag: nothing chang
 - **Fall back whenever the model can't be read**, including a 401 or 403: the call would keep working, but wrong credentials would go unnoticed and the option would silently never merge. A warning and a metric are easy to miss. So the SDK fails when the credentials can't read the model, and falls back only when the read fails for another reason, like a 429 or a 5xx.
 - **Fail whenever the model can't be read**, maybe with a setting to fall back: a short outage of the model read would then break calls that work today. Falling back for those failures keeps the call working, still tells the developer, and avoids another setting.
 - **Return errors from the SDK for checks not in the model:** this saves a check, but the SDK would own those errors and have to keep them in line with the server. It's listed as a later phase.
+- **Send the resolved relations with each check, so the server can verify the grouping:** this would catch an SDK bug on the server, but it needs changes to the API, the server and every SDK. Thorough shared tests cover the same risk with much less complexity.
 - **A standalone code snippet for developers:** no one maintains it, and every app re-implements subtle rules.
 - **Do nothing:** apps keep choosing between fine-grained permissions and fewer counted checks.
 
@@ -322,3 +339,4 @@ None. The option is off by default, so it works as a feature flag: nothing chang
 1. **Function names and package** in `language`: decided in the Go implementation, [openfga/language#721](https://github.com/openfga/language/issues/721), with the `language` maintainers. They're internal. Users only see the option, telemetry names and behavior, which this RFC fixes.
 2. **Release:** a normal release through the usual process. No pre-release, and the option isn't labeled beta. It's off by default, so it works as the feature flag: nothing changes for anyone who doesn't turn it on.
 3. **A 401 or 403 when reading the model:** the call fails instead of falling back, so wrong credentials don't go unnoticed (see [Errors](#errors)). Other read failures, like a 429 or a 5xx, still fall back.
+4. **Retrying the model read:** the SDK doesn't retry it. Other requests keep their retry settings. Retries made a failed first call take over a second, and on services where rejected requests count toward the rate limit, they make a 429 worse. A later call reads again (after about a minute for a 429).
