@@ -71,7 +71,7 @@ Application developers who use client credentials are the ones affected. The API
 
 - Application code does not have to change. The defaults apply when the SDK is upgraded.
 - The three optional settings sit on each SDK's client-credentials configuration object, next to the client ID and secret. The SDK validates them when it creates the client.
-- They cannot be set per request or at the top level of the client configuration. [Alternatives](#alternatives) explains why.
+- They cannot be set per request or at the top level of the client configuration. [Alternatives](#alternatives) explains why. Java is a partial exception, because it accepts a whole credentials object with a single request. [Where the changes land](#where-the-changes-land) describes what happens then.
 
 ## The settings
 
@@ -97,7 +97,7 @@ The two ratios accept any number in their range, with no limit on decimal places
 | Spring Boot starter | `openfga.credentials.config.token-refresh-ratio` | `openfga.credentials.config.token-refresh-jitter-ratio` | `openfga.credentials.config.token-refresh-cutoff-in-sec` | `OpenFgaProperties` |
 
 - A setting that is not set uses its default. Go uses pointer fields for this, because in Go a number that is not set reads as `0`, and `0` is a valid value for the jitter and the cutoff.
-- A value outside the accepted range makes client creation fail in all five SDKs, with the error that SDK already uses for an invalid configuration value. JS, Go and .NET already validate configuration when the client is created. Java and Python validate it on each API call today, so for them this check comes earlier than their existing ones.
+- A value outside the accepted range makes client creation fail in all five SDKs, with the error that SDK already uses for an invalid configuration value. JS, Go and .NET already validate configuration when the client is created. Java and Python validate it on each API call today, so for them this check comes earlier than their existing ones. In Java, a credentials object passed with a single request cannot be checked when the client is created. The SDK checks it when that request is made, before it looks up the token, so an invalid value fails the request even when a token for those credentials is already stored.
 - Python's sync and async clients share the same configuration and follow the same rules.
 
 ### Example in JS
@@ -352,7 +352,7 @@ discardToken(used):
 | The token exchange fails in Case 3 | Every call waiting on that exchange fails with the SDK's authentication error, as today. The next call starts a new exchange. |
 | OpenFGA returns `401` | Discards the token that was sent, waits for a new one and resends the request once. If the token exchange fails, the call returns the authentication error. If the resent request also gets `401`, the SDK discards the new token too and returns the `401` error. |
 | OpenFGA returns `403` or any other error | Keeps the token and handles the error as today. |
-| A setting is outside its accepted values | Client creation fails with a validation error. |
+| A setting is outside its accepted values | Client creation fails with a validation error. In Java, credentials passed with a single request are checked when that request is made, and the request fails. |
 
 ## Concurrency rules
 
