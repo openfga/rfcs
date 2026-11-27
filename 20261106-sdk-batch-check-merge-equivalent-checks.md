@@ -267,7 +267,7 @@ Metrics, recorded for each BatchCheck call with the option on. Names follow the 
 | `fga-client.batch_check.checks_requested` | counter | Checks you passed in. |
 | `fga-client.batch_check.checks_sent` | counter | Checks actually sent. The gap between the two is what the option saved. |
 | `fga-client.model_cache.lookup` | counter | Model cache lookups, with a `hit` or `miss` attribute. |
-| `fga-client.batch_check.merge_fallback` | counter | Calls sent unmerged because the model read failed (for example a 429 or a 5xx), with the status code, or because the checks couldn't be grouped, without one. |
+| `fga-client.batch_check.merge_fallback` | counter | Calls sent unmerged, either because the model read failed (for example a 429 or a 5xx), with the status code as an attribute, or because the checks couldn't be grouped, with no status code. |
 
 - Attributes are store ID and model ID, like the existing metrics. No users, objects or context.
 - The existing `fga-client.request.batch_check_size` attribute stays. It only reports how many checks each request sent, not how many you passed in.
