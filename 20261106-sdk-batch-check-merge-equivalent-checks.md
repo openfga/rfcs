@@ -132,7 +132,7 @@ When the option is on, the SDK:
 1. Fixes the store ID and model ID for the whole call. Reading the model and sending the checks must use the same model, or merges could be wrong.
 2. Validates every correlation ID you passed in (see [Errors](#errors)), so merging can't hide an invalid one.
 3. Gets the model from the [model cache](#model-cache). Only the first call for a model reads it from the server, and calls running in parallel share that one read. If the model or store doesn't exist, or the credentials can't read the model, the call fails before anything is sent. If the model can't be read for another reason, the SDK skips steps 4 and 6 and sends the checks unmerged, as it does today, without retrying the read (see [Errors](#errors)).
-4. **Resolve:** groups the checks and builds the list to send.
+4. **Resolve:** groups the checks and builds the list to send. If grouping fails, the SDK sends the checks unmerged (see [Errors](#errors)).
 5. Sends that list in batches, as it does today. Grouping covers all checks in the call before they're split into batches, so checks that would land in different batches can still merge.
 6. **Expand:** copies each answer back to every check in its group.
 7. Records [telemetry](#telemetry).
@@ -181,6 +181,7 @@ These apply only when the option is on. With it off, nothing changes.
 | The model or store doesn't exist (`authorization_model_not_found` or `store_id_not_found`) | The call fails with that error before any check is sent. BatchCheck would fail the same way. Not remembered, so the next call reads again. |
 | The credentials can't read the model (a 401 or 403, or the SDK can't get a token) | The call fails with that error before any check is sent. Falling back would hide wrong credentials: the developer would think the option works when it never merges. Not remembered, so the call works again as soon as the credentials are fixed. |
 | Reading the model fails for another reason (for example 429, a 5xx, a timeout or a network error) | The SDK sends the checks unmerged, as it does today, so a short outage of the model read doesn't break the call. It logs a warning and records the fallback in [telemetry](#telemetry). The SDK doesn't retry this read, even if the call sets retry options, so a failure costs one request (see [Response time](#response-time)). A 429 is remembered for a short time (for example, a minute), so the SDK doesn't read again on every call. Other failures aren't remembered, so the next call reads again. |
+| Grouping the checks fails unexpectedly | The SDK sends the checks unmerged, as it does today, so a bug in grouping can't break the call. It logs a warning with the error and records the fallback in [telemetry](#telemetry), without a status code. |
 | A check's object type, relation, user type or userset relation isn't in the model | Sent as is. The server returns its usual error. |
 | A BatchCheck request fails | The call fails, as today. |
 | One check in a request returns an error | Only that check's group is affected. The error is copied to every check in the group. For example, if `can_share` was merged into `can_view` and `can_view` returns an error, `can_share` gets the same error. |
@@ -265,11 +266,11 @@ Metrics, recorded for each BatchCheck call with the option on. Names follow the 
 | `fga-client.batch_check.checks_requested` | counter | Checks you passed in. |
 | `fga-client.batch_check.checks_sent` | counter | Checks actually sent. The gap between the two is what the option saved. |
 | `fga-client.model_cache.lookup` | counter | Model cache lookups, with a `hit` or `miss` attribute. |
-| `fga-client.batch_check.merge_fallback` | counter | Calls sent unmerged because the model read failed (for example a 429 or a 5xx), with the status code. |
+| `fga-client.batch_check.merge_fallback` | counter | Calls sent unmerged because the model read failed (for example a 429 or a 5xx), with the status code, or because the checks couldn't be grouped, without one. |
 
 - Attributes are store ID and model ID, like the existing metrics. No users, objects or context.
 - The existing `fga-client.request.batch_check_size` attribute stays. It only reports how many checks each request sent, not how many you passed in.
-- On a fallback, the SDK logs a warning for each failed read, with the store ID, model ID and status code.
+- On a fallback, the SDK logs a warning: once for each failed read, with the store ID, model ID and status code, or with the error if the checks couldn't be grouped.
 - Metrics add up across calls, so they can't show what one call sent. Python's response shows that (see [Per-call count](#per-call-count)).
 - Resolve is deterministic, so any result can be reproduced from the model and the original checks.
 
